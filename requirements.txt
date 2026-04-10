@@ -1,6 +1,5 @@
-setuptools>=68.0.0
 streamlit>=1.32.0
 yfinance>=0.2.36
 pandas>=2.0.0
-pykrx>=1.0.45
+finance-datareader>=0.9.50
  
