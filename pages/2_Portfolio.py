@@ -7,7 +7,6 @@ from services.calculations import calculate_portfolio_row
 
 st.set_page_config(
     page_title="Portfolio",
-    page_icon="💼",
     layout="wide",
 )
 
