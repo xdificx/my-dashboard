@@ -138,6 +138,34 @@ def show_metric(col, d: dict):
         col.metric(d["label"], "—", "조회 실패")
 
 # ══════════════════════════════════════════════════
+#  데이터 소스 연동 상태 점검
+# ══════════════════════════════════════════════════
+@st.cache_data(ttl=300)
+def check_pykrx() -> tuple[bool, str]:
+    """pykrx → KRX 연결 상태 확인"""
+    try:
+        start = (datetime.today() - timedelta(days=10)).strftime("%Y%m%d")
+        end   = datetime.today().strftime("%Y%m%d")
+        df = stock.get_index_ohlcv(start, end, "1001")
+        if df is not None and not df.empty:
+            val = float(df["종가"].iloc[-1])
+            return True, f"{val:,.2f}"
+        return False, "데이터 없음"
+    except Exception as e:
+        return False, str(e)[:60]
+
+@st.cache_data(ttl=300)
+def check_yfinance() -> tuple[bool, str]:
+    """yfinance → Yahoo Finance 연결 상태 확인"""
+    try:
+        price = yf.Ticker("^GSPC").fast_info.last_price
+        if price and price > 0:
+            return True, f"{price:,.2f}"
+        return False, "데이터 없음"
+    except Exception as e:
+        return False, str(e)[:60]
+
+# ══════════════════════════════════════════════════
 #  사이드바
 # ══════════════════════════════════════════════════
 with st.sidebar:
@@ -151,6 +179,34 @@ with st.sidebar:
         "**Commit changes** 클릭\n\n"
         "→ 약 2분 후 자동 반영"
     )
+    st.divider()
+
+    # ── 데이터 소스 연동 상태표시 ──────────────────
+    st.markdown("**📡 데이터 소스 상태**")
+
+    pykrx_ok,  pykrx_val  = check_pykrx()
+    yfinance_ok, yfinance_val = check_yfinance()
+
+    # pykrx 상태
+    if pykrx_ok:
+        st.success(f"pykrx (KRX)  ✔  KOSPI {pykrx_val}")
+    else:
+        st.error(f"pykrx (KRX)  ✖  {pykrx_val}")
+
+    # yfinance 상태
+    if yfinance_ok:
+        st.success(f"yfinance  ✔  S&P {yfinance_val}")
+    else:
+        st.error(f"yfinance  ✖  {yfinance_val}")
+
+    # 전체 요약 한 줄
+    if pykrx_ok and yfinance_ok:
+        st.caption("🟢 모든 데이터 소스 정상 연결")
+    elif pykrx_ok or yfinance_ok:
+        st.caption("🟡 일부 데이터 소스 연결 실패")
+    else:
+        st.caption("🔴 데이터 소스 연결 불가")
+
     st.divider()
     st.caption(f"갱신 시각\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
