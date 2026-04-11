@@ -4,7 +4,8 @@ from datetime import datetime, date
 from services.data_service import get_ticker_data
 from services.db_service import (
     get_all_transactions, add_transaction, delete_transaction,
-    get_current_holdings, get_closed_positions
+    get_current_holdings, get_closed_positions,
+    get_all_cash_flows, add_cash_flow, delete_cash_flow, get_cash_summary
 )
 from services.calculations import calculate_portfolio_row
 
@@ -108,7 +109,7 @@ FX = fx["price"] if fx.get("ok") else 1330.0
 # ══════════════════════════════════════════════════
 #  탭
 # ══════════════════════════════════════════════════
-tab1, tab2, tab3 = st.tabs(["📊 현재 보유 종목", "✅ 매도 완료 종목", "📋 전체 거래 이력"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 현재 보유 종목", "✅ 매도 완료 종목", "📋 전체 거래 이력", "💰 입출금 관리"])
 
 # ─────────────────────────────────────────────────
 #  탭 1 — 현재 보유 종목
@@ -260,4 +261,94 @@ with tab3:
             if st.button("삭제 확인", type="secondary", key="del_btn"):
                 delete_transaction(int(del_id))
                 st.success(f"ID {del_id} 삭제됨")
+                st.rerun()
+
+# ─────────────────────────────────────────────────
+#  탭 4 — 입출금 관리
+# ─────────────────────────────────────────────────
+with tab4:
+
+    # 입출금 요약
+    summary = get_cash_summary()
+    st.markdown("#### 💰 현금 요약")
+    s1, s2, s3 = st.columns(3)
+    s1.metric("총 입금액",        f"{summary['total_deposit']:,.0f}원")
+    s2.metric("총 출금액",        f"{summary['total_withdrawal']:,.0f}원")
+    s3.metric("순수 현금 투자액", f"{summary['net_cash']:,.0f}원",
+              delta_color="normal" if summary["net_cash"] >= 0 else "inverse")
+
+    st.divider()
+
+    # 입출금 추가 폼
+    st.markdown("#### ➕ 입출금 내역 추가")
+    with st.container(border=True):
+        fc1, fc2, fc3, fc4, fc5 = st.columns([1, 2, 2, 2, 1])
+
+        cf_type   = fc1.selectbox("구분", ["입금", "출금"], key="cf_type")
+        cf_amount = fc2.number_input("금액 (원)", min_value=0.0, value=0.0,
+                                     format="%.0f", key="cf_amount")
+        cf_date   = fc3.date_input("날짜", value=date.today(), key="cf_date")
+        cf_source = fc4.text_input("출처", placeholder="예: 월급, 보너스, 용돈",
+                                   key="cf_source")
+        fc5.markdown("<br>", unsafe_allow_html=True)
+
+        # 메모는 별도 줄
+        cf_note = st.text_input("메모 (선택)", placeholder="예: 3월 적립식 투자금",
+                                key="cf_note")
+
+        if st.button("저장", key="cf_save_btn"):
+            if cf_amount > 0:
+                add_cash_flow({
+                    "type":   "deposit" if cf_type == "입금" else "withdrawal",
+                    "amount": float(cf_amount),
+                    "date":   str(cf_date),
+                    "source": cf_source.strip() if cf_source else None,
+                    "note":   cf_note.strip() if cf_note else None,
+                })
+                st.success(f"{cf_type} {cf_amount:,.0f}원 저장됨")
+                st.rerun()
+            else:
+                st.warning("금액을 입력해주세요.")
+
+    st.divider()
+
+    # 입출금 이력 테이블
+    st.markdown("#### 📋 입출금 이력")
+    flows = get_all_cash_flows()
+
+    if not flows:
+        st.info("입출금 내역이 없습니다.")
+    else:
+        rows_f = []
+        for f in flows:
+            rows_f.append({
+                "ID":    f["id"],
+                "날짜":  f["date"],
+                "구분":  "💵 입금" if f["type"] == "deposit" else "💸 출금",
+                "금액(원)": int(float(f["amount"])),
+                "출처":  f.get("source") or "",
+                "메모":  f.get("note")   or "",
+            })
+
+        df_f = pd.DataFrame(rows_f)
+
+        def _style_f(v):
+            if not isinstance(v, str): return ""
+            if "입금" in v: return "color:#e24b4a;font-weight:600"
+            if "출금" in v: return "color:#378add;font-weight:600"
+            return ""
+
+        st.dataframe(
+            df_f.style.map(_style_f, subset=["구분"]),
+            use_container_width=True, hide_index=True,
+        )
+
+        # 삭제
+        with st.expander("🗑️ 입출금 내역 삭제 (잘못 입력한 경우)"):
+            st.caption("위 테이블의 ID를 확인 후 입력하세요.")
+            del_cf_id = st.number_input("삭제할 ID", min_value=1,
+                                        step=1, key="del_cf_id")
+            if st.button("삭제 확인", type="secondary", key="del_cf_btn"):
+                delete_cash_flow(int(del_cf_id))
+                st.success(f"ID {del_cf_id} 삭제됨")
                 st.rerun()
