@@ -7,6 +7,7 @@ from services.calculations import calculate_portfolio_row
 
 st.set_page_config(
     page_title="Portfolio",
+    page_icon="💼",
     layout="wide",
 )
 
@@ -38,18 +39,21 @@ with btn_col:
 if st.session_state.get("show_add_form", False):
     with st.container(border=True):
         st.markdown("**➕ 종목 추가**")
-        c1, c2, c3, c4, c5, c6 = st.columns([2, 2, 1, 2, 1, 1])
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 2, 1, 2, 1, 1, 1])
         f_ticker = c1.text_input("티커", placeholder="005930.KS", key="f_ticker")
         f_name   = c2.text_input("종목명", placeholder="삼성전자", key="f_name")
         f_qty    = c3.number_input("수량", min_value=1, value=1, key="f_qty")
         f_avg    = c4.number_input("평균단가", min_value=0.0, value=0.0,
                                    format="%.2f", key="f_avg")
         f_market = c5.selectbox("시장", ["KR", "US"], key="f_market")
-        c6.markdown("<br>", unsafe_allow_html=True)
-        if c6.button("추가", key="add_btn", use_container_width=True):
+        c6.markdown("<div style='font-size:12px;color:#555;margin-bottom:4px;'>ETF 여부</div>", unsafe_allow_html=True)
+        f_is_etf = c6.checkbox("ETF", value=False, key="f_is_etf", label_visibility="collapsed")
+        c7.markdown("<br>", unsafe_allow_html=True)
+        if c7.button("추가", key="add_btn", use_container_width=True):
             if f_ticker and f_name:
                 add_holding({"ticker": f_ticker, "name": f_name,
-                             "qty": f_qty, "avg": f_avg, "market": f_market})
+                             "qty": f_qty, "avg": f_avg, "market": f_market,
+                             "is_etf": f_is_etf})
                 st.success(f"{f_name} 추가됨")
                 st.session_state["show_add_form"] = False
                 st.rerun()
