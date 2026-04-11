@@ -1,7 +1,3 @@
-# ================================================
-# app.py - 내 투자 대시보드 (최종 안정 버전)
-# ================================================
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -18,14 +14,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ====================== 스타일 ======================
-st.markdown("""
-<style>
-    .stApp { background-color: #0e1117; color: #fafafa; }
-</style>
-""", unsafe_allow_html=True)
+# ====================== 밝은 테마 유지 (다크모드 제거) ======================
+# 다크모드 코드 완전 제거
 
-# ====================== 보유 종목 ======================
+# ====================== 세션 상태 ======================
 if "holdings" not in st.session_state:
     st.session_state.holdings = [
         {"ticker": "005930.KS", "name": "삼성전자",    "qty": 20,  "avg": 72000,  "market": "KR"},
@@ -91,7 +83,7 @@ with st.sidebar:
                 st.session_state.holdings.pop(i)
                 st.rerun()
 
-# ====================== 메인 탭 ======================
+# ====================== 메인 ======================
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "💼 보유종목", "📈 차트분석", "📡 데이터상태"])
 
 with tab1:
@@ -102,21 +94,21 @@ with tab1:
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown("**🇰🇷 국내 지수**")
+        st.subheader("🇰🇷 국내 지수")
         for t, n in [("^KS11", "KOSPI"), ("^KQ11", "KOSDAQ"), ("^KS200", "KOSPI200")]:
             d = get_ticker_data(t)
             if d["ok"]:
                 st.metric(n, f"{d['price']:,.0f}", f"{d['chg']:+.2f}%")
     
     with c2:
-        st.markdown("**🌎 해외 지수**")
+        st.subheader("🌎 해외 지수")
         for t, n in [("^GSPC", "S&P500"), ("^IXIC", "나스닥"), ("^DJI", "다우존스")]:
             d = get_ticker_data(t)
             if d["ok"]:
                 st.metric(n, f"{d['price']:,.0f}", f"{d['chg']:+.2f}%")
     
     with c3:
-        st.markdown("**📡 매크로**")
+        st.subheader("📡 매크로 지표")
         for t, n in [("USDKRW=X", "원/달러"), ("^TNX", "10년국채"), ("^VIX", "VIX")]:
             d = get_ticker_data(t)
             if d["ok"]:
@@ -149,16 +141,12 @@ with tab1:
 
     def color_style(v):
         if isinstance(v, (int, float)):
-            if v > 0:
-                return "color:#e24b4a; font-weight:600"   # 상승 = 빨강
-            else:
-                return "color:#378add; font-weight:600"   # 하락 = 파랑
+            return "color:#e24b4a; font-weight:600" if v > 0 else "color:#378add; font-weight:600"
         return ""
 
     st.dataframe(
-        df.style
-            .map(color_style, subset=["수익률(%)"])
-            .map(color_style, subset=["평가손익(원)"]),
+        df.style.map(color_style, subset=["수익률(%)"])
+                .map(color_style, subset=["평가손익(원)"]),
         use_container_width=True,
         hide_index=True
     )
@@ -179,14 +167,13 @@ with tab3:
     hist = get_history(ticker, period)
     if not hist.empty:
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
-        fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'],
-                                    low=hist['Low'], close=hist['Close']), row=1, col=1)
+        fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close']), row=1, col=1)
         fig.add_trace(go.Bar(x=hist.index, y=hist['Volume']), row=2, col=1)
-        fig.update_layout(height=700, template="plotly_dark", title=f"{selected} 차트")
+        fig.update_layout(height=700, title=f"{selected} 차트")
         st.plotly_chart(fig, use_container_width=True)
 
 with tab4:
-    st.info("📡 데이터 상태 페이지는 준비 중입니다.")
+    st.info("📡 데이터 상태 페이지는 준비중입니다.")
 
 # ====================== 자동 새로고침 ======================
 if refresh_option == "30초":
