@@ -72,60 +72,17 @@ FX = fx["price"] if fx.get("ok") else 1330.0
 
 # ══════════════════════════════════════════════════
 #  종목 분류 함수 (도넛 차트용)
+#  is_etf 컬럼 기반으로 정확하게 분류
 # ══════════════════════════════════════════════════
-# 국내 ETF 티커 목록 (코스피/코스닥 상장 ETF 앞 3자리 기준)
-KR_ETF_PREFIXES = ("069","091","102","114","122","132","139","148","152","157",
-                   "160","168","176","182","183","192","195","200","202","203",
-                   "208","209","214","215","217","219","226","228","229","233",
-                   "236","238","251","252","253","261","266","267","269","272",
-                   "273","276","278","279","280","282","284","287","289","290",
-                   "292","294","295","296","298","299","300","304","305","306",
-                   "308","310","314","315","316","317","319","321","322","323",
-                   "329","332","333","334","336","337","338","339","340","341",
-                   "343","346","352","357","360","361","364","365","367","371",
-                   "372","373","374","375","376","377","379","381","385","387",
-                   "388","389","390","391","392","394","395","396","397","398",
-                   "400","401","402","403","404","405","406","407","408","409",
-                   "411","412","413","415","416","417","418","420","421","422",
-                   "424","425","426","427","428","429","430","432","433","434",
-                   "436","437","438","439","440","441","442","443","444","445",
-                   "447","448","449","450","451","452","453","454","456","457",
-                   "458","459","460","461","462","463","465","466","467","468",
-                   "469","470","471","472","473","474","475","476","477","478",
-                   "479","480","481","482","483","484","485","486","487","488",
-                   "489","490","491","492","493","494","495","496","497","498",
-                   "499","500")
-
-# 해외 ETF 티커 목록 (대표적인 것들)
-US_ETF_TICKERS = {
-    "SPY","QQQ","IVV","VOO","VTI","VEA","VWO","EEM","GLD","IAU",
-    "SLV","USO","TLT","IEF","LQD","HYG","VNQ","XLF","XLK","XLE",
-    "XLV","XLI","XLY","XLP","XLU","XLB","XLRE","ARKK","ARKG","ARKW",
-    "SCHD","VYM","DVY","SDY","HDV","DGRO","VIG","NOBL","JEPI","JEPQ",
-    "QYLD","RYLD","XYLD","TQQQ","SOXL","FNGU","TECL","SPXL","UPRO",
-    "SQQQ","SDOW","UVXY","VXX","BITO","IBIT","FBTC","GBTC","ETHE",
-    "AGG","BND","BNDX","EMB","JNK","VCIT","VCSH","BSV","BIV","BLV",
-    "VGK","EWJ","EWZ","EWC","EWA","EWG","EWU","EWI","EWS","EWT",
-    "EWY","EWH","EWM","EWP","EWQ","EWD","EWN","EWO","EWL","EWK",
-    "ACWI","URTH","IOO","VT","IXUS","VXUS","EFA","SCZ","VSS",
-    "DIA","MDY","IJH","IJR","VBR","VBK","VTV","VUG","IWM","IWD","IWF",
-}
-
 def classify_holding(h: dict) -> str:
-    """보유 종목을 4개 카테고리로 분류"""
-    ticker = h["ticker"].upper()
+    """보유 종목을 4개 카테고리로 분류 (is_etf 컬럼 기준)"""
     market = h.get("market", "KR")
+    is_etf = h.get("is_etf", False)
 
-    if market == "KR" or ticker.endswith(".KS") or ticker.endswith(".KQ"):
-        code = ticker.replace(".KS","").replace(".KQ","")
-        if code[:3] in KR_ETF_PREFIXES:
-            return "국내 ETF"
-        return "국내 개별 종목"
+    if market == "KR":
+        return "국내 ETF" if is_etf else "국내 개별 종목"
     else:
-        base = ticker.split(".")[0]
-        if base in US_ETF_TICKERS:
-            return "해외 ETF"
-        return "해외 개별 종목"
+        return "해외 ETF" if is_etf else "해외 개별 종목"
 
 # ══════════════════════════════════════════════════
 #  섹션 1 — Market Indicator + 도넛 차트 (같은 행)
@@ -171,59 +128,59 @@ with right_col:
         st.info("Portfolio 페이지에서 종목을 추가하면 자산 배분 차트가 표시됩니다.")
     else:
         # 카테고리별 투자금액 합산
-        category_amounts = {
-            "국내 개별 종목": 0,
-            "국내 ETF": 0,
-            "해외 개별 종목": 0,
-            "해외 ETF": 0,
-        }
+        # 4개 카테고리 항상 고정 표시 (0원도 포함)
+        CATEGORIES  = ["국내 개별 종목", "국내 ETF", "해외 개별 종목", "해외 ETF"]
+        DONUT_COLORS = ["#e24b4a", "#ffaaaa", "#378add", "#99c2ee"]
+
+        category_amounts = {c: 0 for c in CATEGORIES}
         for h in holdings_for_donut:
-            cat = classify_holding(h)
+            cat  = classify_holding(h)
             cost = (round(h["avg"] * FX) if h["market"] == "US" else round(h["avg"])) * h["qty"]
             category_amounts[cat] += cost
 
-        # 0원 카테고리 제외
-        labels = [k for k, v in category_amounts.items() if v > 0]
-        values = [v for v in category_amounts.values() if v > 0]
+        labels     = CATEGORIES
+        values     = [category_amounts[c] for c in CATEGORIES]
+        total_cost = sum(values)
 
-        if values:
-            DONUT_COLORS = ["#e24b4a", "#ff9999", "#378add", "#99bbee"]
-            colors_used  = DONUT_COLORS[:len(labels)]
-            total_cost   = sum(values)
+        fig_donut = go.Figure(go.Pie(
+            labels=labels,
+            values=[max(v, 1) for v in values],   # 0이면 1로 대체해 조각 유지
+            hole=0.58,
+            pull=[0.03 if v > 0 else 0 for v in values],
+            marker=dict(
+                colors=[c if values[i] > 0 else "#eeeeee"
+                        for i, c in enumerate(DONUT_COLORS)],
+                line=dict(color="#fff", width=2),
+            ),
+            textinfo="none",
+            hovertemplate="%{label}<br>%{customdata:,.0f}원<br>%{percent}<extra></extra>",
+            customdata=values,
+        ))
 
-            fig_donut = go.Figure(go.Pie(
-                labels=labels,
-                values=values,
-                hole=0.58,
-                marker=dict(colors=colors_used, line=dict(color="#fff", width=2)),
-                textinfo="percent",
-                textfont=dict(size=12),
-                hovertemplate="%{label}<br>%{value:,.0f}원<br>%{percent}<extra></extra>",
-            ))
+        donut_col, legend_col = st.columns([3, 2])
 
-            # 도넛 차트 + 우측 카테고리 테이블을 나란히
-            donut_col, legend_col = st.columns([3, 2])
+        with donut_col:
+            fig_donut.update_layout(
+                height=300,
+                margin=dict(t=10, b=10, l=0, r=0),
+                showlegend=False,
+            )
+            st.plotly_chart(fig_donut, use_container_width=True)
 
-            with donut_col:
-                fig_donut.update_layout(
-                    height=300,
-                    margin=dict(t=10, b=10, l=0, r=0),
-                    showlegend=False,
-                )
-                st.plotly_chart(fig_donut, use_container_width=True)
-
-            with legend_col:
-                st.markdown("<br><br>", unsafe_allow_html=True)
-                for label, val, color in zip(labels, values, colors_used):
-                    pct = val / total_cost * 100
-                    st.markdown(f"""
+        with legend_col:
+            st.markdown("<br><br>", unsafe_allow_html=True)
+            for label, val, color in zip(labels, values, DONUT_COLORS):
+                pct        = val / total_cost * 100 if total_cost > 0 else 0
+                text_color = "#333" if val > 0 else "#bbb"
+                box_color  = color if val > 0 else "#eeeeee"
+                st.markdown(f"""
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
   <div style="width:12px;height:12px;border-radius:3px;
-              background:{color};flex-shrink:0;"></div>
+              background:{box_color};flex-shrink:0;"></div>
   <div style="font-size:12px;line-height:1.5;">
-    <div style="color:#555;font-weight:600;">{label}</div>
-    <div style="color:#333;">{val:,.0f}원</div>
-    <div style="color:#888;">{pct:.1f}%</div>
+    <div style="color:{text_color};font-weight:600;">{label}</div>
+    <div style="color:{text_color};">{val:,.0f}원</div>
+    <div style="color:#aaa;">{pct:.1f}%</div>
   </div>
 </div>""", unsafe_allow_html=True)
 
