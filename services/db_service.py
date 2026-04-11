@@ -162,3 +162,19 @@ def get_cash_summary():
         "total_withdrawal": total_withdrawal,
         "net_cash":         total_deposit - total_withdrawal,
     }
+
+# ══════════════════════════════════════════════════
+#  watchlist CRUD (즐겨찾기 종목)
+# ══════════════════════════════════════════════════
+def get_watchlist():
+    res = supabase.table("watchlist").select("*").order("created_at", desc=False).execute()
+    return res.data
+
+def add_watchlist(ticker: str, name: str):
+    # 중복 체크
+    existing = supabase.table("watchlist").select("id").eq("ticker", ticker).execute()
+    if not existing.data:
+        supabase.table("watchlist").insert({"ticker": ticker, "name": name}).execute()
+
+def delete_watchlist(id: int):
+    supabase.table("watchlist").delete().eq("id", id).execute()
