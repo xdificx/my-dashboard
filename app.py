@@ -55,7 +55,7 @@ def fetch(ticker, label):
 #  사이드바
 # ══════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("### ⚙️ 설정")
+    st.markdown("### ⚙️ Setting")
     auto_refresh = st.toggle("5분 자동 갱신", value=True)
     st.divider()
     st.markdown("### ➕ 종목 추가")
