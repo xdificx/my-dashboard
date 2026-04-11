@@ -18,7 +18,6 @@ st.set_page_config(
 #  보유 종목 목록
 #  수정 방법: GitHub에서 이 파일 편집 → Commit changes
 #             약 2분 후 Render에 자동 반영
-#
 #  market: "KR" = 국내,  "US" = 해외(달러)
 # ══════════════════════════════════════════════════
 MY_HOLDINGS = [
@@ -30,7 +29,7 @@ MY_HOLDINGS = [
 ]
 
 # ══════════════════════════════════════════════════
-#  날짜 헬퍼 — pykrx는 YYYYMMDD 형식 사용
+#  날짜 헬퍼
 # ══════════════════════════════════════════════════
 def _today() -> str:
     return datetime.today().strftime("%Y%m%d")
@@ -43,7 +42,6 @@ def _date_back(days: int) -> str:
 # ══════════════════════════════════════════════════
 @st.cache_data(ttl=300)
 def get_kr_price(ticker: str) -> int | None:
-    """최근 5 영업일 중 가장 최근 종가 반환"""
     for days_back in range(0, 8):
         date = _date_back(days_back)
         try:
@@ -57,11 +55,10 @@ def get_kr_price(ticker: str) -> int | None:
     return None
 
 # ══════════════════════════════════════════════════
-#  국내 종목 세부 지표 — pykrx (PER, PBR, 배당수익률)
+#  국내 종목 세부 지표 — pykrx
 # ══════════════════════════════════════════════════
 @st.cache_data(ttl=300)
 def get_kr_fundamental(ticker: str) -> dict:
-    """PER, PBR, 배당수익률 반환"""
     for days_back in range(0, 8):
         date = _date_back(days_back)
         try:
@@ -69,9 +66,9 @@ def get_kr_fundamental(ticker: str) -> dict:
             if df is not None and not df.empty:
                 row = df.iloc[-1]
                 return {
-                    "PER":  round(float(row.get("PER",  0)), 2),
-                    "PBR":  round(float(row.get("PBR",  0)), 2),
-                    "DIV":  round(float(row.get("DIV",  0)), 2),
+                    "PER": round(float(row.get("PER", 0)), 2),
+                    "PBR": round(float(row.get("PBR", 0)), 2),
+                    "DIV": round(float(row.get("DIV", 0)), 2),
                 }
         except Exception:
             continue
@@ -79,7 +76,6 @@ def get_kr_fundamental(ticker: str) -> dict:
 
 # ══════════════════════════════════════════════════
 #  국내 지수 — pykrx
-#  KOSPI=1001, KOSDAQ=2001, KOSPI200=1028
 # ══════════════════════════════════════════════════
 @st.cache_data(ttl=300)
 def get_kr_index(index_code: str, label: str) -> dict:
@@ -90,11 +86,8 @@ def get_kr_index(index_code: str, label: str) -> dict:
         if df is not None and len(df) >= 2:
             cur  = float(df["종가"].iloc[-1])
             prev = float(df["종가"].iloc[-2])
-            return {
-                "label": label,
-                "price": round(cur, 2),
-                "chg":   round((cur - prev) / prev * 100, 2),
-            }
+            return {"label": label, "price": round(cur, 2),
+                    "chg": round((cur - prev) / prev * 100, 2)}
     except Exception:
         pass
     return {"label": label, "price": None, "chg": None}
@@ -138,34 +131,6 @@ def show_metric(col, d: dict):
         col.metric(d["label"], "—", "조회 실패")
 
 # ══════════════════════════════════════════════════
-#  데이터 소스 연동 상태 점검
-# ══════════════════════════════════════════════════
-@st.cache_data(ttl=300)
-def check_pykrx() -> tuple[bool, str]:
-    """pykrx → KRX 연결 상태 확인"""
-    try:
-        start = (datetime.today() - timedelta(days=10)).strftime("%Y%m%d")
-        end   = datetime.today().strftime("%Y%m%d")
-        df = stock.get_index_ohlcv(start, end, "1001")
-        if df is not None and not df.empty:
-            val = float(df["종가"].iloc[-1])
-            return True, f"{val:,.2f}"
-        return False, "데이터 없음"
-    except Exception as e:
-        return False, str(e)[:60]
-
-@st.cache_data(ttl=300)
-def check_yfinance() -> tuple[bool, str]:
-    """yfinance → Yahoo Finance 연결 상태 확인"""
-    try:
-        price = yf.Ticker("^GSPC").fast_info.last_price
-        if price and price > 0:
-            return True, f"{price:,.2f}"
-        return False, "데이터 없음"
-    except Exception as e:
-        return False, str(e)[:60]
-
-# ══════════════════════════════════════════════════
 #  사이드바
 # ══════════════════════════════════════════════════
 with st.sidebar:
@@ -180,34 +145,6 @@ with st.sidebar:
         "→ 약 2분 후 자동 반영"
     )
     st.divider()
-
-    # ── 데이터 소스 연동 상태표시 ──────────────────
-    st.markdown("**📡 데이터 소스 상태**")
-
-    pykrx_ok,  pykrx_val  = check_pykrx()
-    yfinance_ok, yfinance_val = check_yfinance()
-
-    # pykrx 상태
-    if pykrx_ok:
-        st.success(f"pykrx (KRX)  ✔  KOSPI {pykrx_val}")
-    else:
-        st.error(f"pykrx (KRX)  ✖  {pykrx_val}")
-
-    # yfinance 상태
-    if yfinance_ok:
-        st.success(f"yfinance  ✔  S&P {yfinance_val}")
-    else:
-        st.error(f"yfinance  ✖  {yfinance_val}")
-
-    # 전체 요약 한 줄
-    if pykrx_ok and yfinance_ok:
-        st.caption("🟢 모든 데이터 소스 정상 연결")
-    elif pykrx_ok or yfinance_ok:
-        st.caption("🟡 일부 데이터 소스 연결 실패")
-    else:
-        st.caption("🔴 데이터 소스 연결 불가")
-
-    st.divider()
     st.caption(f"갱신 시각\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # ══════════════════════════════════════════════════
@@ -219,12 +156,11 @@ st.caption(
     "국내 종목 — 당일 종가 기준  |  해외 종목 — 실시간 (15분 지연)"
 )
 
-# 환율 — 이후 섹션 재사용
 fx_data = get_yf_data("USDKRW=X", "원/달러 환율")
 FX = fx_data["price"] if fx_data["price"] else 1330.0
 
 # ══════════════════════════════════════════════════
-#  섹션 1 — 국내 지수 (pykrx)
+#  섹션 1 — 국내 지수
 # ══════════════════════════════════════════════════
 st.subheader("🇰🇷 국내 지수")
 domestic = [
@@ -237,7 +173,7 @@ for col, d in zip(cols, domestic):
     show_metric(col, d)
 
 # ══════════════════════════════════════════════════
-#  섹션 2 — 해외 지수 (yfinance)
+#  섹션 2 — 해외 지수
 # ══════════════════════════════════════════════════
 st.subheader("🌎 해외 지수")
 foreign = [
@@ -250,7 +186,7 @@ for col, d in zip(cols, foreign):
     show_metric(col, d)
 
 # ══════════════════════════════════════════════════
-#  섹션 3 — 거시 지표 (yfinance)
+#  섹션 3 — 거시 지표
 # ══════════════════════════════════════════════════
 st.subheader("📡 거시 지표")
 macro = [
@@ -290,25 +226,25 @@ for h in MY_HOLDINGS:
         pnl = (cur_krw - avg_krw) * h["qty"]
         val =  cur_krw * h["qty"]
         rows.append({
-            "종목명":         h["name"],
-            "시장":           h["market"],
-            "현재가":         cur_disp,
-            "평균단가(원)":   f"{avg_krw:,}",
-            "수익률(%)":      round(ret, 2),
-            "평가손익(원)":   int(pnl),
-            "수량":           h["qty"],
-            "평가금액(원)":   int(val),
-            "PER":            fund["PER"],
-            "PBR":            fund["PBR"],
-            "배당수익률(%)":  fund["DIV"],
+            "종목명":        h["name"],
+            "시장":          h["market"],
+            "현재가":        cur_disp,
+            "평균단가(원)":  f"{avg_krw:,}",
+            "수익률(%)":     round(ret, 2),
+            "평가손익(원)":  int(pnl),
+            "수량":          h["qty"],
+            "평가금액(원)":  int(val),
+            "PER":           fund["PER"],
+            "PBR":           fund["PBR"],
+            "배당수익률(%)": fund["DIV"],
         })
     else:
         rows.append({
-            "종목명": h["name"],       "시장": h["market"],
-            "현재가": cur_disp,        "평균단가(원)": f"{avg_krw:,}",
-            "수익률(%)": None,          "평가손익(원)": None,
-            "수량": h["qty"],           "평가금액(원)": None,
-            "PER": None,               "PBR": None,
+            "종목명": h["name"],      "시장": h["market"],
+            "현재가": cur_disp,       "평균단가(원)": f"{avg_krw:,}",
+            "수익률(%)": None,        "평가손익(원)": None,
+            "수량": h["qty"],         "평가금액(원)": None,
+            "PER": None,              "PBR": None,
             "배당수익률(%)": None,
         })
 
@@ -348,11 +284,11 @@ if valid:
     total_ret = total_pnl / total_cost * 100 if total_cost else 0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("총 투자금액",  f"{total_cost:,.0f}원")
-    c2.metric("총 평가금액",  f"{total_val:,.0f}원")
-    c3.metric("총 평가손익",  f"{total_pnl:+,.0f}원",
+    c1.metric("총 투자금액", f"{total_cost:,.0f}원")
+    c2.metric("총 평가금액", f"{total_val:,.0f}원")
+    c3.metric("총 평가손익", f"{total_pnl:+,.0f}원",
               delta_color="normal" if total_pnl >= 0 else "inverse")
-    c4.metric("총 수익률",    f"{total_ret:+.2f}%",
+    c4.metric("총 수익률",   f"{total_ret:+.2f}%",
               delta_color="normal" if total_ret >= 0 else "inverse")
 else:
     st.warning("현재가 조회에 실패했습니다. 잠시 후 새로고침 해주세요.")
