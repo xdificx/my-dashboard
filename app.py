@@ -3,7 +3,7 @@ import pandas as pd
 import time
 from datetime import datetime, timedelta
 from services.data_service import get_ticker_data, get_history
-from services.db_service import get_all_holdings, get_current_holdings, get_all_transactions
+from services.db_service import get_all_holdings, get_current_holdings, get_all_transactions, get_cash_summary
 from services.calculations import calculate_portfolio_row
 import plotly.graph_objects as go
 
@@ -211,17 +211,19 @@ else:
             total_pnl = total_val - total_cost
             total_ret = total_pnl / total_cost * 100 if total_cost else 0
 
-            c1, c2, c3, c4 = st.columns(4)
-            pnl_color  = "#e24b4a" if total_pnl >= 0 else "#378add"
-            ret_arrow  = "▲" if total_ret >= 0 else "▼"
+            cash = get_cash_summary()
 
-            c1.metric("총 투자금액", f"{total_cost:,.0f}원")
-            c2.metric("총 평가금액", f"{total_val:,.0f}원")
-            c3.metric("총 평가손익", f"{total_pnl:+,.0f}원",
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("순수 현금 투자액", f"{cash['net_cash']:,.0f}원",
+                      help="총 입금액 - 총 출금액")
+            c2.metric("총 매수금액",  f"{total_cost:,.0f}원")
+            c3.metric("총 평가금액",  f"{total_val:,.0f}원")
+            c4.metric("총 평가손익",  f"{total_pnl:+,.0f}원",
                       delta_color="normal" if total_pnl >= 0 else "inverse")
-            c4.metric("총 수익률", f"{total_ret:+.2f}%",
+            c5.metric("총 수익률",    f"{total_ret:+.2f}%",
                       delta_color="normal" if total_ret >= 0 else "inverse")
-            st.caption(f"적용 환율: 1 USD = {FX:,.2f} KRW")
+            st.caption(f"적용 환율: 1 USD = {FX:,.2f} KRW  |  "
+                       f"입출금 내역은 Portfolio → 💰 입출금 관리 탭에서 입력하세요.")
         except Exception:
             pass
 
