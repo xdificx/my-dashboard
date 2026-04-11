@@ -55,19 +55,15 @@ with st.sidebar:
     st.markdown("### ⚙️ 설정")
     auto_refresh = st.toggle("5분 자동 갱신", value=True)
     st.divider()
-
-# ══════════════════════════════════════════════════
-#  헤더
-# ══════════════════════════════════════════════════
-st.markdown("""
-<div style="padding:8px 0 4px 0;">
-  <span style="font-size:28px;font-weight:800;">📊 Main Dashboard</span>
-</div>
-<div style="font-size:12px;color:#888;margin-bottom:8px;">
-  데이터: Yahoo Finance (yfinance) | 15분 지연 | 갱신 시각: {now}
-</div>
-""".format(now=datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-unsafe_allow_html=True)
+    # 하단 여백을 밀어넣어 데이터 출처를 최하단에 고정
+    st.markdown(
+        """<div style="position:fixed;bottom:20px;font-size:11px;color:#aaa;line-height:1.6;">
+        데이터: Yahoo Finance (yfinance)<br>
+        15분 지연<br>
+        갱신 시각: {now}
+        </div>""".format(now=__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+        unsafe_allow_html=True
+    )
 
 fx = fetch("USDKRW=X", "원/달러 환율")
 FX = fx["price"] if fx.get("ok") else 1330.0
