@@ -1,7 +1,6 @@
 import streamlit as st
 import yfinance as yf
-from pykrx import stock
-from datetime import datetime, timedelta
+from datetime import datetime
 import traceback
 import time
 
@@ -12,73 +11,35 @@ st.set_page_config(
 )
 
 # ══════════════════════════════════════════════════
-#  날짜 헬퍼
+#  점검 항목 — 전체 yfinance
 # ══════════════════════════════════════════════════
-def _today() -> str:
-    return datetime.today().strftime("%Y%m%d")
-
-def _date_back(days: int) -> str:
-    return (datetime.today() - timedelta(days=days)).strftime("%Y%m%d")
-
-# ══════════════════════════════════════════════════
-#  점검 대상 목록
-# ══════════════════════════════════════════════════
-
-# pykrx 점검 항목
-PYKRX_CHECKS = [
-    {"label": "KOSPI",      "type": "index",  "code": "1001"},
-    {"label": "KOSDAQ",     "type": "index",  "code": "2001"},
-    {"label": "KOSPI 200",  "type": "index",  "code": "1028"},
-    {"label": "삼성전자",   "type": "stock",  "code": "005930"},
-]
-
-# yfinance 점검 항목
-YFINANCE_CHECKS = [
-    {"label": "S&P 500",      "ticker": "^GSPC"},
-    {"label": "나스닥",        "ticker": "^IXIC"},
-    {"label": "다우존스",      "ticker": "^DJI"},
-    {"label": "달러 인덱스",   "ticker": "DX-Y.NYB"},
-    {"label": "원/달러 환율",  "ticker": "USDKRW=X"},
-    {"label": "미 10년 국채",  "ticker": "^TNX"},
-    {"label": "금 선물",       "ticker": "GC=F"},
-    {"label": "WTI 원유",      "ticker": "CL=F"},
+CHECK_ITEMS = [
+    # 국내 지수
+    {"group": "🇰🇷 국내 지수",   "label": "KOSPI",       "ticker": "^KS11"},
+    {"group": "🇰🇷 국내 지수",   "label": "KOSDAQ",      "ticker": "^KQ11"},
+    {"group": "🇰🇷 국내 지수",   "label": "KOSPI 200",   "ticker": "^KS200"},
+    # 국내 종목 (샘플)
+    {"group": "🇰🇷 국내 종목",   "label": "삼성전자",     "ticker": "005930.KS"},
+    {"group": "🇰🇷 국내 종목",   "label": "카카오",       "ticker": "035720.KQ"},
+    {"group": "🇰🇷 국내 종목",   "label": "SK하이닉스",   "ticker": "000660.KS"},
+    # 해외 지수
+    {"group": "🌎 해외 지수",    "label": "S&P 500",     "ticker": "^GSPC"},
+    {"group": "🌎 해외 지수",    "label": "나스닥",       "ticker": "^IXIC"},
+    {"group": "🌎 해외 지수",    "label": "다우존스",     "ticker": "^DJI"},
+    # 거시 지표
+    {"group": "📡 거시 지표",    "label": "달러 인덱스",  "ticker": "DX-Y.NYB"},
+    {"group": "📡 거시 지표",    "label": "원/달러 환율", "ticker": "USDKRW=X"},
+    {"group": "📡 거시 지표",    "label": "미 10년 국채", "ticker": "^TNX"},
+    {"group": "📡 거시 지표",    "label": "금 선물",      "ticker": "GC=F"},
+    {"group": "📡 거시 지표",    "label": "WTI 원유",     "ticker": "CL=F"},
 ]
 
 # ══════════════════════════════════════════════════
-#  개별 점검 함수
+#  점검 함수
 # ══════════════════════════════════════════════════
 @st.cache_data(ttl=300)
-def check_pykrx_index(code: str) -> tuple[bool, str, str]:
+def check_ticker(ticker: str) -> tuple[bool, str, str]:
     """(성공여부, 값, 오류메시지)"""
-    try:
-        start = _date_back(10)
-        end   = _today()
-        df = stock.get_index_ohlcv(start, end, code)
-        if df is not None and not df.empty:
-            val = float(df["종가"].iloc[-1])
-            return True, f"{val:,.2f}", ""
-        return False, "", f"빈 데이터 반환 (start={start}, end={end})"
-    except Exception:
-        lines = [l.strip() for l in traceback.format_exc().strip().splitlines() if l.strip()]
-        return False, "", " | ".join(lines[-2:])[:300]
-
-@st.cache_data(ttl=300)
-def check_pykrx_stock(code: str) -> tuple[bool, str, str]:
-    try:
-        for days_back in range(0, 8):
-            date = _date_back(days_back)
-            df = stock.get_market_ohlcv(date, date, code)
-            if df is not None and not df.empty:
-                val = int(df["종가"].iloc[-1])
-                if val > 0:
-                    return True, f"{val:,}원", ""
-        return False, "", "8일치 탐색 후에도 데이터 없음"
-    except Exception:
-        lines = [l.strip() for l in traceback.format_exc().strip().splitlines() if l.strip()]
-        return False, "", " | ".join(lines[-2:])[:300]
-
-@st.cache_data(ttl=300)
-def check_yfinance_ticker(ticker: str) -> tuple[bool, str, str]:
     try:
         info  = yf.Ticker(ticker).fast_info
         price = info.last_price
@@ -105,90 +66,83 @@ with st.sidebar:
 #  헤더
 # ══════════════════════════════════════════════════
 st.title("📡 데이터 소스 상태")
-st.caption("pykrx (KRX) 와 yfinance (Yahoo Finance) 의 연결 상태를 항목별로 점검합니다.")
+st.caption(
+    "모든 데이터: Yahoo Finance (yfinance)  |  "
+    "KRX Open API 발급 후 국내 데이터 품질 업그레이드 예정"
+)
 
 # ══════════════════════════════════════════════════
-#  pykrx 섹션
+#  점검 실행 + 결과 수집
 # ══════════════════════════════════════════════════
-st.subheader("🇰🇷 pykrx — KRX 데이터")
+results = []
+for item in CHECK_ITEMS:
+    ok, val, err = check_ticker(item["ticker"])
+    results.append({**item, "ok": ok, "val": val, "err": err})
 
-pykrx_results = []
-for item in PYKRX_CHECKS:
-    if item["type"] == "index":
-        ok, val, err = check_pykrx_index(item["code"])
-    else:
-        ok, val, err = check_pykrx_stock(item["code"])
-    pykrx_results.append({"item": item, "ok": ok, "val": val, "err": err})
+# ══════════════════════════════════════════════════
+#  전체 요약 배너
+# ══════════════════════════════════════════════════
+total   = len(results)
+failed  = [r for r in results if not r["ok"]]
+success = total - len(failed)
 
-# 전체 요약
-pykrx_fail = [r for r in pykrx_results if not r["ok"]]
-if not pykrx_fail:
-    st.success(f"✅ pykrx 전체 정상 — {len(pykrx_results)}개 항목 모두 연결 성공")
+if not failed:
+    st.success(f"✅ 전체 정상 — {success}/{total}개 항목 모두 연결 성공")
+elif len(failed) < total:
+    st.warning(f"⚠️ 일부 실패 — {success}/{total}개 연결 성공  |  실패: {len(failed)}개")
 else:
-    st.error(f"❌ pykrx 연결 실패 — {len(pykrx_fail)}개 항목 실패 / {len(pykrx_results)}개 중")
-
-# 항목별 상세
-cols = st.columns(len(PYKRX_CHECKS))
-for col, r in zip(cols, pykrx_results):
-    with col:
-        if r["ok"]:
-            st.success(f"**{r['item']['label']}**\n\n{r['val']}")
-        else:
-            st.error(f"**{r['item']['label']}**\n\n연결 실패")
-            with st.expander("오류 상세"):
-                st.code(r["err"] or "오류 메시지 없음", language=None)
+    st.error(f"🔴 전체 실패 — {total}개 항목 모두 조회 불가")
 
 st.divider()
 
 # ══════════════════════════════════════════════════
-#  yfinance 섹션
+#  그룹별 상세 표시
 # ══════════════════════════════════════════════════
-st.subheader("🌎 yfinance — Yahoo Finance 데이터")
+groups = {}
+for r in results:
+    groups.setdefault(r["group"], []).append(r)
 
-yf_results = []
-for item in YFINANCE_CHECKS:
-    ok, val, err = check_yfinance_ticker(item["ticker"])
-    yf_results.append({"item": item, "ok": ok, "val": val, "err": err})
+for group_name, items in groups.items():
+    group_fail = [i for i in items if not i["ok"]]
+    status_icon = "✅" if not group_fail else f"❌ {len(group_fail)}개 실패"
+    st.subheader(f"{group_name}  {status_icon}")
 
-# 전체 요약
-yf_fail = [r for r in yf_results if not r["ok"]]
-if not yf_fail:
-    st.success(f"✅ yfinance 전체 정상 — {len(yf_results)}개 항목 모두 연결 성공")
-else:
-    st.error(f"❌ yfinance 연결 실패 — {len(yf_fail)}개 항목 실패 / {len(yf_results)}개 중")
-
-# 항목별 상세 — 4열 그리드
-n = len(YFINANCE_CHECKS)
-cols = st.columns(4)
-for i, r in enumerate(yf_results):
-    with cols[i % 4]:
-        if r["ok"]:
-            st.success(f"**{r['item']['label']}**\n\n{r['val']}")
-        else:
-            st.error(f"**{r['item']['label']}**\n\n연결 실패")
-            with st.expander("오류 상세"):
-                st.code(r["err"] or "오류 메시지 없음", language=None)
+    cols = st.columns(len(items))
+    for col, r in zip(cols, items):
+        with col:
+            if r["ok"]:
+                st.success(f"**{r['label']}**\n\n{r['val']}\n\n`{r['ticker']}`")
+            else:
+                st.error(f"**{r['label']}**\n\n연결 실패\n\n`{r['ticker']}`")
+                if r["err"]:
+                    with st.expander("오류 상세"):
+                        st.code(r["err"], language=None)
 
 st.divider()
 
 # ══════════════════════════════════════════════════
-#  전체 종합 요약
+#  실패 항목 전체 목록 (있을 때만)
 # ══════════════════════════════════════════════════
-st.subheader("📋 전체 종합")
+if failed:
+    st.subheader("❌ 실패 항목 목록")
+    for r in failed:
+        st.markdown(
+            f"- **{r['group']}** › **{r['label']}** (`{r['ticker']}`)"
+            + (f"\n  → `{r['err'][:100]}`" if r["err"] else "")
+        )
 
-total_checks = len(pykrx_results) + len(yf_results)
-total_fail   = len(pykrx_fail) + len(yf_fail)
-total_ok     = total_checks - total_fail
-
-if total_fail == 0:
-    st.success(f"🟢 모든 데이터 소스 정상 — {total_ok}/{total_checks} 항목 연결 성공")
-elif total_fail < total_checks:
-    st.warning(f"🟡 일부 연결 실패 — {total_ok}/{total_checks} 항목 연결 성공")
-    st.markdown("**실패 항목 목록:**")
-    for r in pykrx_fail + yf_fail:
-        st.markdown(f"- ❌ {r['item']['label']}: `{r['err'][:80] if r['err'] else '오류 메시지 없음'}`")
-else:
-    st.error(f"🔴 전체 연결 불가 — {total_fail}개 항목 모두 실패")
+# ══════════════════════════════════════════════════
+#  KRX Open API 업그레이드 안내
+# ══════════════════════════════════════════════════
+with st.expander("🔧 KRX Open API 연동 예정 항목"):
+    st.markdown(
+        "KRX Open API 키 발급 후 아래 항목이 공식 KRX 데이터로 업그레이드됩니다.\n\n"
+        "- 국내 지수 (KOSPI·KOSDAQ·KOSPI200) — KRX 공식 종가\n"
+        "- 국내 개별 종목 현재가 — KRX 공식 데이터 (누락 없음)\n"
+        "- PER · PBR · 배당수익률 — 종목별 세부 지표\n"
+        "- 외국인 순매수 · 기관 매매 동향\n\n"
+        "현재는 yfinance로 대체 조회 중입니다. (15분 지연, 간헐적 누락 가능)"
+    )
 
 # ══════════════════════════════════════════════════
 #  자동 갱신
