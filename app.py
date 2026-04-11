@@ -99,7 +99,7 @@ st.markdown("### 📈 Market Indicator")
 st.markdown("""
 <style>
 [data-testid="stHorizontalBlock"] {
-    gap: 8px;
+    gap: 4px;
 }
 </style>
 """, unsafe_allow_html=True)
