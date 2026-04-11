@@ -96,7 +96,15 @@ FX = fx["price"] if fx.get("ok") else 1330.0
 st.markdown("### 📈 Market Indicator")
 
 # 열 간격을 줄이기 위해 gap 옵션 사용
-col_kr, col_us, col_macro = st.columns([1, 1, 1], gap="small")
+st.markdown("""
+<style>
+[data-testid="stHorizontalBlock"] {
+    gap: 8px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+col_kr, col_us, col_macro = st.columns([1, 1, 1])
 
 with col_kr:
     st.markdown(
