@@ -1,6 +1,6 @@
 from supabase import create_client
 
 SUPABASE_URL = "https://iadwpshbyphyxnearpir.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhZHdwc2hieXBoeXhuZWFycGlyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NTgwODMsImV4cCI6MjA5MTQzNDA4M30.fUUDla9VDbxsunLls1cLUnmpkSJP_LShtybzveYXCm8"
+SUPABASE_KEY = "sb_publishable_9hYxK_tOLq4AuQ2FScS7vw_kSjdNzzT"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
