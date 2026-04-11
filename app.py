@@ -57,11 +57,13 @@ with st.sidebar:
     st.divider()
     # 하단 여백을 밀어넣어 데이터 출처를 최하단에 고정
     st.markdown(
-        """<div style="position:fixed;bottom:20px;font-size:11px;color:#aaa;line-height:1.6;">
-        데이터: Yahoo Finance (yfinance)<br>
-        15분 지연<br>
-        갱신 시각: {now}
-        </div>""".format(now=__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+        """<div style="position:fixed;bottom:20px;left:0;width:18rem;
+                       padding:0 1.5rem;box-sizing:border-box;
+                       font-size:13px;color:#888;line-height:1.8;">
+        📡 데이터: Yahoo Finance<br>
+        ⏱ 15분 지연<br>
+        🕐 갱신: {now}
+        </div>""".format(now=__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')),
         unsafe_allow_html=True
     )
 
@@ -69,37 +71,161 @@ fx = fetch("USDKRW=X", "원/달러 환율")
 FX = fx["price"] if fx.get("ok") else 1330.0
 
 # ══════════════════════════════════════════════════
-#  섹션 1 — Market Indicator
+#  종목 분류 함수 (도넛 차트용)
 # ══════════════════════════════════════════════════
-st.markdown("### 📈 Market Indicator")
-col_kr, col_us, col_macro = st.columns([1, 1, 1], gap="small")
+# 국내 ETF 티커 목록 (코스피/코스닥 상장 ETF 앞 3자리 기준)
+KR_ETF_PREFIXES = ("069","091","102","114","122","132","139","148","152","157",
+                   "160","168","176","182","183","192","195","200","202","203",
+                   "208","209","214","215","217","219","226","228","229","233",
+                   "236","238","251","252","253","261","266","267","269","272",
+                   "273","276","278","279","280","282","284","287","289","290",
+                   "292","294","295","296","298","299","300","304","305","306",
+                   "308","310","314","315","316","317","319","321","322","323",
+                   "329","332","333","334","336","337","338","339","340","341",
+                   "343","346","352","357","360","361","364","365","367","371",
+                   "372","373","374","375","376","377","379","381","385","387",
+                   "388","389","390","391","392","394","395","396","397","398",
+                   "400","401","402","403","404","405","406","407","408","409",
+                   "411","412","413","415","416","417","418","420","421","422",
+                   "424","425","426","427","428","429","430","432","433","434",
+                   "436","437","438","439","440","441","442","443","444","445",
+                   "447","448","449","450","451","452","453","454","456","457",
+                   "458","459","460","461","462","463","465","466","467","468",
+                   "469","470","471","472","473","474","475","476","477","478",
+                   "479","480","481","482","483","484","485","486","487","488",
+                   "489","490","491","492","493","494","495","496","497","498",
+                   "499","500")
 
-with col_kr:
-    st.markdown(
-        '<div style="background:#fff5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
-        '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">🇰🇷 국내 지수</div>',
-        unsafe_allow_html=True)
-    for t, n in [("^KS11","KOSPI"),("^KQ11","KOSDAQ"),("^KS200","KOSPI 200")]:
-        show_card(fetch(t, n))
-    st.markdown('</div>', unsafe_allow_html=True)
+# 해외 ETF 티커 목록 (대표적인 것들)
+US_ETF_TICKERS = {
+    "SPY","QQQ","IVV","VOO","VTI","VEA","VWO","EEM","GLD","IAU",
+    "SLV","USO","TLT","IEF","LQD","HYG","VNQ","XLF","XLK","XLE",
+    "XLV","XLI","XLY","XLP","XLU","XLB","XLRE","ARKK","ARKG","ARKW",
+    "SCHD","VYM","DVY","SDY","HDV","DGRO","VIG","NOBL","JEPI","JEPQ",
+    "QYLD","RYLD","XYLD","TQQQ","SOXL","FNGU","TECL","SPXL","UPRO",
+    "SQQQ","SDOW","UVXY","VXX","BITO","IBIT","FBTC","GBTC","ETHE",
+    "AGG","BND","BNDX","EMB","JNK","VCIT","VCSH","BSV","BIV","BLV",
+    "VGK","EWJ","EWZ","EWC","EWA","EWG","EWU","EWI","EWS","EWT",
+    "EWY","EWH","EWM","EWP","EWQ","EWD","EWN","EWO","EWL","EWK",
+    "ACWI","URTH","IOO","VT","IXUS","VXUS","EFA","SCZ","VSS",
+    "DIA","MDY","IJH","IJR","VBR","VBK","VTV","VUG","IWM","IWD","IWF",
+}
 
-with col_us:
-    st.markdown(
-        '<div style="background:#f5f8ff;border-radius:12px;padding:14px 16px 6px 16px;">'
-        '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">🌎 해외 지수</div>',
-        unsafe_allow_html=True)
-    for t, n in [("^GSPC","S&P 500"),("^IXIC","나스닥"),("^DJI","다우존스")]:
-        show_card(fetch(t, n))
-    st.markdown('</div>', unsafe_allow_html=True)
+def classify_holding(h: dict) -> str:
+    """보유 종목을 4개 카테고리로 분류"""
+    ticker = h["ticker"].upper()
+    market = h.get("market", "KR")
 
-with col_macro:
-    st.markdown(
-        '<div style="background:#f5f5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
-        '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">📡 거시 지표</div>',
-        unsafe_allow_html=True)
-    for t, n in [("USDKRW=X","원/달러 환율"),("^TNX","미 10년 국채"),("^VIX","변동성 (VIX)")]:
-        show_card(fetch(t, n))
-    st.markdown('</div>', unsafe_allow_html=True)
+    if market == "KR" or ticker.endswith(".KS") or ticker.endswith(".KQ"):
+        code = ticker.replace(".KS","").replace(".KQ","")
+        if code[:3] in KR_ETF_PREFIXES:
+            return "국내 ETF"
+        return "국내 개별 종목"
+    else:
+        base = ticker.split(".")[0]
+        if base in US_ETF_TICKERS:
+            return "해외 ETF"
+        return "해외 개별 종목"
+
+# ══════════════════════════════════════════════════
+#  섹션 1 — Market Indicator + 도넛 차트 (같은 행)
+# ══════════════════════════════════════════════════
+left_col, right_col = st.columns([3, 2], gap="medium")
+
+with left_col:
+    st.markdown("### 📈 Market Indicator")
+    col_kr, col_us, col_macro = st.columns([1, 1, 1], gap="small")
+
+    with col_kr:
+        st.markdown(
+            '<div style="background:#fff5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">🇰🇷 국내 지수</div>',
+            unsafe_allow_html=True)
+        for t, n in [("^KS11","KOSPI"),("^KQ11","KOSDAQ"),("^KS200","KOSPI 200")]:
+            show_card(fetch(t, n))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_us:
+        st.markdown(
+            '<div style="background:#f5f8ff;border-radius:12px;padding:14px 16px 6px 16px;">'
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">🌎 해외 지수</div>',
+            unsafe_allow_html=True)
+        for t, n in [("^GSPC","S&P 500"),("^IXIC","나스닥"),("^DJI","다우존스")]:
+            show_card(fetch(t, n))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_macro:
+        st.markdown(
+            '<div style="background:#f5f5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
+            '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">📡 거시 지표</div>',
+            unsafe_allow_html=True)
+        for t, n in [("USDKRW=X","원/달러 환율"),("^TNX","미 10년 국채"),("^VIX","변동성 (VIX)")]:
+            show_card(fetch(t, n))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+with right_col:
+    st.markdown("### 🥧 자산 배분")
+    holdings_for_donut = get_all_holdings()
+
+    if not holdings_for_donut:
+        st.info("Portfolio 페이지에서 종목을 추가하면 자산 배분 차트가 표시됩니다.")
+    else:
+        # 카테고리별 투자금액 합산
+        category_amounts = {
+            "국내 개별 종목": 0,
+            "국내 ETF": 0,
+            "해외 개별 종목": 0,
+            "해외 ETF": 0,
+        }
+        for h in holdings_for_donut:
+            cat = classify_holding(h)
+            cost = (round(h["avg"] * FX) if h["market"] == "US" else round(h["avg"])) * h["qty"]
+            category_amounts[cat] += cost
+
+        # 0원 카테고리 제외
+        labels = [k for k, v in category_amounts.items() if v > 0]
+        values = [v for v in category_amounts.values() if v > 0]
+
+        if values:
+            DONUT_COLORS = ["#e24b4a", "#ff9999", "#378add", "#99bbee"]
+            colors_used  = DONUT_COLORS[:len(labels)]
+            total_cost   = sum(values)
+
+            fig_donut = go.Figure(go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.58,
+                marker=dict(colors=colors_used, line=dict(color="#fff", width=2)),
+                textinfo="percent",
+                textfont=dict(size=12),
+                hovertemplate="%{label}<br>%{value:,.0f}원<br>%{percent}<extra></extra>",
+            ))
+
+            # 도넛 차트 + 우측 카테고리 테이블을 나란히
+            donut_col, legend_col = st.columns([3, 2])
+
+            with donut_col:
+                fig_donut.update_layout(
+                    height=300,
+                    margin=dict(t=10, b=10, l=0, r=0),
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_donut, use_container_width=True)
+
+            with legend_col:
+                st.markdown("<br><br>", unsafe_allow_html=True)
+                for label, val, color in zip(labels, values, colors_used):
+                    pct = val / total_cost * 100
+                    st.markdown(f"""
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+  <div style="width:12px;height:12px;border-radius:3px;
+              background:{color};flex-shrink:0;"></div>
+  <div style="font-size:12px;line-height:1.5;">
+    <div style="color:#555;font-weight:600;">{label}</div>
+    <div style="color:#333;">{val:,.0f}원</div>
+    <div style="color:#888;">{pct:.1f}%</div>
+  </div>
+</div>""", unsafe_allow_html=True)
 
 st.divider()
 
