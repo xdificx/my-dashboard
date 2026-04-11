@@ -56,7 +56,6 @@ def fetch(ticker, label):
 #  사이드바
 # ══════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("## 📈 Main Dashboard")
     st.markdown("### ⚙️ 설정")
     auto_refresh = st.toggle("5분 자동 갱신", value=True)
     st.divider()
@@ -78,32 +77,60 @@ with st.sidebar:
 # ══════════════════════════════════════════════════
 #  헤더
 # ══════════════════════════════════════════════════
-st.title("Main Dashboard")
-st.caption("데이터: Yahoo Finance (yfinance) | 15분 지연")
+st.markdown("""
+<div style="padding:8px 0 4px 0;">
+  <span style="font-size:28px;font-weight:800;">📊 Main Dashboard</span>
+</div>
+<div style="font-size:12px;color:#888;margin-bottom:8px;">
+  데이터: Yahoo Finance (yfinance) | 15분 지연 |
+  갱신 시각: {now}
+</div>
+""".format(now=__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+unsafe_allow_html=True)
 
 fx = fetch("USDKRW=X", "원/달러 환율")
 FX = fx["price"] if fx.get("ok") else 1330.0
 
 # ══════════════════════════════════════════════════
-#  섹션 1 — 시장 지표 (3열 나란히, 항목 세로)
+#  섹션 1 — Market Indicator (3열 나란히, 항목 세로)
 # ══════════════════════════════════════════════════
-st.subheader("📈 시장 지표")
-col_kr, col_us, col_macro = st.columns(3)
+st.markdown("### 📈 Market Indicator")
+
+# 열 간격을 줄이기 위해 gap 옵션 사용
+col_kr, col_us, col_macro = st.columns([1, 1, 1], gap="small")
 
 with col_kr:
-    st.markdown("**🇰🇷 국내 지수**")
+    st.markdown(
+        '<div style="background:#fff5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
+        '<div style="font-size:13px;font-weight:700;color:#e24b4a;margin-bottom:8px;">'
+        '🇰🇷 국내 지수</div>',
+        unsafe_allow_html=True
+    )
     for t, n in [("^KS11","KOSPI"),("^KQ11","KOSDAQ"),("^KS200","KOSPI 200")]:
         show_card(fetch(t, n))
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col_us:
-    st.markdown("**🌎 해외 지수**")
+    st.markdown(
+        '<div style="background:#f5f8ff;border-radius:12px;padding:14px 16px 6px 16px;">'
+        '<div style="font-size:13px;font-weight:700;color:#378add;margin-bottom:8px;">'
+        '🌎 해외 지수</div>',
+        unsafe_allow_html=True
+    )
     for t, n in [("^GSPC","S&P 500"),("^IXIC","나스닥"),("^DJI","다우존스")]:
         show_card(fetch(t, n))
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col_macro:
-    st.markdown("**📡 거시 지표**")
+    st.markdown(
+        '<div style="background:#f5f5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
+        '<div style="font-size:13px;font-weight:700;color:#555;margin-bottom:8px;">'
+        '📡 거시 지표</div>',
+        unsafe_allow_html=True
+    )
     for t, n in [("USDKRW=X","원/달러 환율"),("^TNX","미 10년 국채"),("^VIX","변동성 (VIX)")]:
         show_card(fetch(t, n))
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.divider()
 
