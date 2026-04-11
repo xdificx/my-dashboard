@@ -13,7 +13,6 @@ from plotly.subplots import make_subplots
 # ══════════════════════════════════════════════════
 st.set_page_config(
     page_title="Main Dashboard",
-    page_icon="📈",
     layout="wide",
 )
 
