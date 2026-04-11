@@ -14,10 +14,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ====================== 밝은 테마 유지 (다크모드 제거) ======================
-# 다크모드 코드 완전 제거
+# ====================== 밝은 테마 ======================
+# 다크모드 코드 없음 (원래 밝은 배경 유지)
 
-# ====================== 세션 상태 ======================
+# ====================== 종목 유지 로직 (가장 중요!) ======================
 if "holdings" not in st.session_state:
     st.session_state.holdings = [
         {"ticker": "005930.KS", "name": "삼성전자",    "qty": 20,  "avg": 72000,  "market": "KR"},
@@ -97,22 +97,19 @@ with tab1:
         st.subheader("🇰🇷 국내 지수")
         for t, n in [("^KS11", "KOSPI"), ("^KQ11", "KOSDAQ"), ("^KS200", "KOSPI200")]:
             d = get_ticker_data(t)
-            if d["ok"]:
-                st.metric(n, f"{d['price']:,.0f}", f"{d['chg']:+.2f}%")
+            if d["ok"]: st.metric(n, f"{d['price']:,.0f}", f"{d['chg']:+.2f}%")
     
     with c2:
         st.subheader("🌎 해외 지수")
         for t, n in [("^GSPC", "S&P500"), ("^IXIC", "나스닥"), ("^DJI", "다우존스")]:
             d = get_ticker_data(t)
-            if d["ok"]:
-                st.metric(n, f"{d['price']:,.0f}", f"{d['chg']:+.2f}%")
+            if d["ok"]: st.metric(n, f"{d['price']:,.0f}", f"{d['chg']:+.2f}%")
     
     with c3:
         st.subheader("📡 매크로 지표")
         for t, n in [("USDKRW=X", "원/달러"), ("^TNX", "10년국채"), ("^VIX", "VIX")]:
             d = get_ticker_data(t)
-            if d["ok"]:
-                st.metric(n, f"{d['price']:.2f}", f"{d['chg']:+.2f}%")
+            if d["ok"]: st.metric(n, f"{d['price']:.2f}", f"{d['chg']:+.2f}%")
 
     st.divider()
     st.subheader("💼 보유 종목 수익률")
@@ -161,16 +158,17 @@ with tab2:
 
 with tab3:
     st.subheader("📈 차트 분석")
-    selected = st.selectbox("종목 선택", [h["name"] for h in st.session_state.holdings])
-    ticker = next(h["ticker"] for h in st.session_state.holdings if h["name"] == selected)
-    period = st.selectbox("기간", ["1mo", "3mo", "6mo", "1y"], index=3)
-    hist = get_history(ticker, period)
-    if not hist.empty:
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
-        fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close']), row=1, col=1)
-        fig.add_trace(go.Bar(x=hist.index, y=hist['Volume']), row=2, col=1)
-        fig.update_layout(height=700, title=f"{selected} 차트")
-        st.plotly_chart(fig, use_container_width=True)
+    if st.session_state.holdings:
+        selected = st.selectbox("종목 선택", [h["name"] for h in st.session_state.holdings])
+        ticker = next(h["ticker"] for h in st.session_state.holdings if h["name"] == selected)
+        period = st.selectbox("기간", ["1mo", "3mo", "6mo", "1y"], index=3)
+        hist = get_history(ticker, period)
+        if not hist.empty:
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
+            fig.add_trace(go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close']), row=1, col=1)
+            fig.add_trace(go.Bar(x=hist.index, y=hist['Volume']), row=2, col=1)
+            fig.update_layout(height=700, title=f"{selected} 차트")
+            st.plotly_chart(fig, use_container_width=True)
 
 with tab4:
     st.info("📡 데이터 상태 페이지는 준비중입니다.")
