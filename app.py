@@ -12,7 +12,7 @@ from plotly.subplots import make_subplots
 #  페이지 설정
 # ══════════════════════════════════════════════════
 st.set_page_config(
-    page_title="내 투자 대시보드",
+    page_title="Main Dashboard",
     page_icon="📈",
     layout="wide",
 )
@@ -56,6 +56,7 @@ def fetch(ticker, label):
 #  사이드바
 # ══════════════════════════════════════════════════
 with st.sidebar:
+    st.markdown("## 📈 Main Dashboard")
     st.markdown("### ⚙️ 설정")
     auto_refresh = st.toggle("5분 자동 갱신", value=True)
     st.divider()
