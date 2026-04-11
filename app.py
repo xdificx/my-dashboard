@@ -1,6 +1,5 @@
 import streamlit as st
 import yfinance as yf
-from pykrx import stock
 import pandas as pd
 from datetime import datetime, timedelta
 import time
@@ -18,109 +17,46 @@ st.set_page_config(
 #  보유 종목 목록
 #  수정 방법: GitHub에서 이 파일 편집 → Commit changes
 #             약 2분 후 Render에 자동 반영
+#
 #  market: "KR" = 국내,  "US" = 해외(달러)
+#  KR 티커: 6자리 종목코드 + ".KS" (코스피) 또는 ".KQ" (코스닥)
+#  예) 삼성전자=005930.KS, 카카오=035720.KQ
 # ══════════════════════════════════════════════════
 MY_HOLDINGS = [
-    {"ticker": "005930", "name": "삼성전자",    "qty": 20,  "avg": 72000,  "market": "KR"},
-    {"ticker": "035720", "name": "카카오",      "qty": 10,  "avg": 58000,  "market": "KR"},
-    {"ticker": "000660", "name": "SK하이닉스",  "qty":  5,  "avg": 130000, "market": "KR"},
-    {"ticker": "AAPL",   "name": "Apple",       "qty":  5,  "avg": 172.0,  "market": "US"},
-    {"ticker": "SCHD",   "name": "SCHD ETF",    "qty": 10,  "avg": 77.0,   "market": "US"},
+    {"ticker": "005930.KS", "name": "삼성전자",    "qty": 20,  "avg": 72000,  "market": "KR"},
+    {"ticker": "035720.KQ", "name": "카카오",      "qty": 10,  "avg": 58000,  "market": "KR"},
+    {"ticker": "000660.KS", "name": "SK하이닉스",  "qty":  5,  "avg": 130000, "market": "KR"},
+    {"ticker": "AAPL",      "name": "Apple",       "qty":  5,  "avg": 172.0,  "market": "US"},
+    {"ticker": "SCHD",      "name": "SCHD ETF",    "qty": 10,  "avg": 77.0,   "market": "US"},
 ]
 
 # ══════════════════════════════════════════════════
-#  날짜 헬퍼
-# ══════════════════════════════════════════════════
-def _today() -> str:
-    return datetime.today().strftime("%Y%m%d")
-
-def _date_back(days: int) -> str:
-    return (datetime.today() - timedelta(days=days)).strftime("%Y%m%d")
-
-# ══════════════════════════════════════════════════
-#  국내 종목 현재가 — pykrx
+#  공통 데이터 조회 — yfinance
 # ══════════════════════════════════════════════════
 @st.cache_data(ttl=300)
-def get_kr_price(ticker: str) -> int | None:
-    for days_back in range(0, 8):
-        date = _date_back(days_back)
-        try:
-            df = stock.get_market_ohlcv(date, date, ticker)
-            if df is not None and not df.empty:
-                close = int(df["종가"].iloc[-1])
-                if close > 0:
-                    return close
-        except Exception:
-            continue
-    return None
-
-# ══════════════════════════════════════════════════
-#  국내 종목 세부 지표 — pykrx
-# ══════════════════════════════════════════════════
-@st.cache_data(ttl=300)
-def get_kr_fundamental(ticker: str) -> dict:
-    for days_back in range(0, 8):
-        date = _date_back(days_back)
-        try:
-            df = stock.get_market_fundamental(date, date, ticker)
-            if df is not None and not df.empty:
-                row = df.iloc[-1]
-                return {
-                    "PER": round(float(row.get("PER", 0)), 2),
-                    "PBR": round(float(row.get("PBR", 0)), 2),
-                    "DIV": round(float(row.get("DIV", 0)), 2),
-                }
-        except Exception:
-            continue
-    return {"PER": None, "PBR": None, "DIV": None}
-
-# ══════════════════════════════════════════════════
-#  국내 지수 — pykrx
-# ══════════════════════════════════════════════════
-@st.cache_data(ttl=300)
-def get_kr_index(index_code: str, label: str) -> dict:
-    start = _date_back(10)
-    end   = _today()
-    try:
-        df = stock.get_index_ohlcv(start, end, index_code)
-        if df is not None and len(df) >= 2:
-            cur  = float(df["종가"].iloc[-1])
-            prev = float(df["종가"].iloc[-2])
-            return {"label": label, "price": round(cur, 2),
-                    "chg": round((cur - prev) / prev * 100, 2)}
-    except Exception:
-        pass
-    return {"label": label, "price": None, "chg": None}
-
-# ══════════════════════════════════════════════════
-#  해외 종목 현재가 — yfinance
-# ══════════════════════════════════════════════════
-@st.cache_data(ttl=300)
-def get_us_price(ticker: str) -> float | None:
-    try:
-        return round(yf.Ticker(ticker).fast_info.last_price, 2)
-    except Exception:
-        return None
-
-# ══════════════════════════════════════════════════
-#  해외 지수·거시 지표 — yfinance
-# ══════════════════════════════════════════════════
-@st.cache_data(ttl=300)
-def get_yf_data(ticker: str, label: str) -> dict:
+def get_ticker_data(ticker: str, label: str) -> dict:
+    """지수·종목·거시지표 범용 조회"""
     try:
         info  = yf.Ticker(ticker).fast_info
         price = info.last_price
         prev  = info.previous_close
-        chg   = (price - prev) / prev * 100
-        return {"label": label, "price": round(price, 2), "chg": round(chg, 2)}
+        if price and price > 0 and prev and prev > 0:
+            chg = (price - prev) / prev * 100
+            return {
+                "label": label,
+                "price": round(price, 2),
+                "chg":   round(chg, 2),
+                "ok":    True,
+            }
     except Exception:
-        return {"label": label, "price": None, "chg": None}
+        pass
+    return {"label": label, "price": None, "chg": None, "ok": False}
 
 # ══════════════════════════════════════════════════
 #  공통 렌더링 헬퍼
 # ══════════════════════════════════════════════════
 def show_metric(col, d: dict):
-    if d["price"] is not None:
+    if d["ok"]:
         col.metric(
             d["label"],
             f"{d['price']:,.2f}",
@@ -152,21 +88,23 @@ with st.sidebar:
 # ══════════════════════════════════════════════════
 st.title("📊 내 투자 대시보드")
 st.caption(
-    "국내 데이터: KRX (pykrx)  |  해외 데이터: Yahoo Finance (yfinance)  |  "
-    "국내 종목 — 당일 종가 기준  |  해외 종목 — 실시간 (15분 지연)"
+    "데이터: Yahoo Finance (yfinance)  |  "
+    "국내 종목 — 당일 종가 기준 (15분 지연)  |  "
+    "해외 종목 — 실시간 (15분 지연)"
 )
 
-fx_data = get_yf_data("USDKRW=X", "원/달러 환율")
-FX = fx_data["price"] if fx_data["price"] else 1330.0
+# 환율 — 이후 섹션에서 재사용
+fx_data = get_ticker_data("USDKRW=X", "원/달러 환율")
+FX = fx_data["price"] if fx_data["ok"] else 1330.0
 
 # ══════════════════════════════════════════════════
 #  섹션 1 — 국내 지수
 # ══════════════════════════════════════════════════
 st.subheader("🇰🇷 국내 지수")
 domestic = [
-    get_kr_index("1001", "KOSPI"),
-    get_kr_index("2001", "KOSDAQ"),
-    get_kr_index("1028", "KOSPI 200"),
+    get_ticker_data("^KS11",  "KOSPI"),
+    get_ticker_data("^KQ11",  "KOSDAQ"),
+    get_ticker_data("^KS200", "KOSPI 200"),
 ]
 cols = st.columns(3)
 for col, d in zip(cols, domestic):
@@ -177,9 +115,9 @@ for col, d in zip(cols, domestic):
 # ══════════════════════════════════════════════════
 st.subheader("🌎 해외 지수")
 foreign = [
-    get_yf_data("^GSPC", "S&P 500"),
-    get_yf_data("^IXIC", "나스닥"),
-    get_yf_data("^DJI",  "다우존스"),
+    get_ticker_data("^GSPC", "S&P 500"),
+    get_ticker_data("^IXIC", "나스닥"),
+    get_ticker_data("^DJI",  "다우존스"),
 ]
 cols = st.columns(3)
 for col, d in zip(cols, foreign):
@@ -190,11 +128,11 @@ for col, d in zip(cols, foreign):
 # ══════════════════════════════════════════════════
 st.subheader("📡 거시 지표")
 macro = [
-    get_yf_data("DX-Y.NYB", "달러 인덱스"),
+    get_ticker_data("DX-Y.NYB", "달러 인덱스"),
     fx_data,
-    get_yf_data("^TNX",     "미 10년 국채"),
-    get_yf_data("GC=F",     "금 선물"),
-    get_yf_data("CL=F",     "WTI 원유"),
+    get_ticker_data("^TNX",     "미 10년 국채"),
+    get_ticker_data("GC=F",     "금 선물"),
+    get_ticker_data("CL=F",     "WTI 원유"),
 ]
 cols = st.columns(5)
 for col, d in zip(cols, macro):
@@ -209,17 +147,17 @@ st.subheader("💼 보유 종목 수익률")
 
 rows = []
 for h in MY_HOLDINGS:
+    d = get_ticker_data(h["ticker"], h["name"])
+
     if h["market"] == "KR":
-        cur_krw  = get_kr_price(h["ticker"])
+        cur_krw  = round(d["price"]) if d["ok"] else None
         avg_krw  = h["avg"]
         cur_disp = f"{cur_krw:,}원" if cur_krw else "조회 실패"
-        fund     = get_kr_fundamental(h["ticker"])
     else:
-        cur_usd  = get_us_price(h["ticker"])
+        cur_usd  = d["price"] if d["ok"] else None
         cur_krw  = round(cur_usd * FX) if cur_usd else None
         avg_krw  = round(h["avg"] * FX)
         cur_disp = f"${cur_usd:.2f}" if cur_usd else "조회 실패"
-        fund     = {"PER": None, "PBR": None, "DIV": None}
 
     if cur_krw:
         ret = (cur_krw - avg_krw) / avg_krw * 100
@@ -234,9 +172,6 @@ for h in MY_HOLDINGS:
             "평가손익(원)":  int(pnl),
             "수량":          h["qty"],
             "평가금액(원)":  int(val),
-            "PER":           fund["PER"],
-            "PBR":           fund["PBR"],
-            "배당수익률(%)": fund["DIV"],
         })
     else:
         rows.append({
@@ -244,8 +179,6 @@ for h in MY_HOLDINGS:
             "현재가": cur_disp,       "평균단가(원)": f"{avg_krw:,}",
             "수익률(%)": None,        "평가손익(원)": None,
             "수량": h["qty"],         "평가금액(원)": None,
-            "PER": None,              "PBR": None,
-            "배당수익률(%)": None,
         })
 
 df = pd.DataFrame(rows)
