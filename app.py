@@ -78,7 +78,7 @@ with st.sidebar:
 # ══════════════════════════════════════════════════
 #  헤더
 # ══════════════════════════════════════════════════
-st.title("📊 내 투자 대시보드")
+st.title("Main Dashboard")
 st.caption("데이터: Yahoo Finance (yfinance) | 15분 지연")
 
 fx = fetch("USDKRW=X", "원/달러 환율")
