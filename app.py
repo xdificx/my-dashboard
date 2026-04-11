@@ -3,7 +3,7 @@ import pandas as pd
 import time
 from datetime import datetime, timedelta
 from services.data_service import get_ticker_data, get_history
-from services.db_service import get_all_holdings
+from services.db_service import get_all_holdings, get_current_holdings, get_all_transactions
 from services.calculations import calculate_portfolio_row
 import plotly.graph_objects as go
 
@@ -241,60 +241,117 @@ else:
     import yfinance as yf
 
     @st.cache_data(ttl=300)
-    def build_portfolio_history(tickers_market_avg_qty, period, fx_rate):
-        """날짜별 포트폴리오 총 평가금액 및 수익률 계산"""
-        all_closes = {}
-        for ticker, market, avg, qty in tickers_market_avg_qty:
+    def build_portfolio_history(tx_tuple, period, fx_rate):
+        """
+        거래 이력 기반 날짜별 포트폴리오 수익률 계산
+        - 매수일 이전 데이터 제외
+        - 매도 후 잔여 수량만 반영
+        """
+        import pandas as pd
+        from datetime import datetime, timedelta
+
+        transactions = list(tx_tuple)  # tuple → list 복원
+        if not transactions:
+            return pd.DataFrame()
+
+        # 기간 설정
+        period_days = {"1mo":30,"3mo":90,"6mo":180,"1y":365}
+        days = period_days.get(period, 90)
+        end_date   = datetime.today().date()
+        start_date = end_date - timedelta(days=days)
+
+        # ticker별 가격 히스토리 다운로드
+        tickers = list({t["ticker"] for t in transactions})
+        price_data = {}
+        for ticker in tickers:
             try:
-                df = yf.download(ticker, period=period, interval="1d", progress=False)
+                df = yf.download(ticker, start=str(start_date), end=str(end_date),
+                                 interval="1d", progress=False)
                 if df.empty:
                     continue
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
-                all_closes[ticker] = (df["Close"], market, avg, qty)
+                price_data[ticker] = df["Close"]
             except Exception:
                 continue
 
-        if not all_closes:
+        if not price_data:
             return pd.DataFrame()
 
-        # 공통 날짜 기준으로 맞추기
-        dates = None
-        for ticker, (series, *_) in all_closes.items():
-            dates = series.index if dates is None else dates.intersection(series.index)
+        # 공통 날짜 추출
+        all_dates = None
+        for series in price_data.values():
+            all_dates = series.index if all_dates is None else all_dates.union(series.index)
 
-        if dates is None or len(dates) == 0:
+        if all_dates is None or len(all_dates) == 0:
             return pd.DataFrame()
 
-        total_cost = sum(
-            (round(avg * fx_rate) if market == "US" else round(avg)) * qty
-            for _, market, avg, qty in all_closes.values()
-        )
+        # 날짜별 포트폴리오 계산
+        daily_val  = []
+        daily_cost = []
 
-        daily_val = []
-        for date in dates:
-            val = 0
-            for ticker, (series, market, avg, qty) in all_closes.items():
-                try:
-                    price = float(series.loc[date])
-                    cur = round(price * fx_rate) if market == "US" else round(price)
-                    val += cur * qty
-                except Exception:
+        for d in all_dates:
+            d_str = d.strftime("%Y-%m-%d") if hasattr(d, 'strftime') else str(d)[:10]
+
+            # 이 날짜 기준 보유 수량 및 평균단가 계산
+            holdings_on_date = {}
+            for t in transactions:
+                t_date = str(t["date"])[:10]
+                if t_date > d_str:
+                    continue  # 이 날짜 이후 거래는 제외
+                ticker = t["ticker"]
+                if ticker not in holdings_on_date:
+                    holdings_on_date[ticker] = {
+                        "market": t["market"],
+                        "buy_qty": 0.0, "buy_amount": 0.0,
+                        "sell_qty": 0.0,
+                    }
+                if t["type"] == "buy":
+                    holdings_on_date[ticker]["buy_qty"]    += float(t["qty"])
+                    holdings_on_date[ticker]["buy_amount"] += float(t["qty"]) * float(t["price"])
+                elif t["type"] == "sell":
+                    holdings_on_date[ticker]["sell_qty"]   += float(t["qty"])
+
+            val  = 0.0
+            cost = 0.0
+            for ticker, h in holdings_on_date.items():
+                remain = h["buy_qty"] - h["sell_qty"]
+                if remain <= 0:
                     continue
-            daily_val.append({"date": date, "total_val": val})
+                avg = h["buy_amount"] / h["buy_qty"] if h["buy_qty"] > 0 else 0
+                # 평가금액
+                if ticker in price_data:
+                    try:
+                        price = float(price_data[ticker].loc[d])
+                        cur   = round(price * fx_rate) if h["market"] == "US" else round(price)
+                        val  += cur * remain
+                    except Exception:
+                        cur   = round(avg * fx_rate) if h["market"] == "US" else round(avg)
+                        val  += cur * remain
+                # 투자 원금
+                cost_unit = round(avg * fx_rate) if h["market"] == "US" else round(avg)
+                cost += cost_unit * remain
+
+            if cost > 0:
+                daily_val.append({"date": d, "total_val": val, "total_cost": cost})
+
+        if not daily_val:
+            return pd.DataFrame()
 
         df_result = pd.DataFrame(daily_val).set_index("date")
-        df_result["수익률(%)"] = (df_result["total_val"] - total_cost) / total_cost * 100
+        df_result["수익률(%)"]  = (df_result["total_val"] - df_result["total_cost"]) / df_result["total_cost"] * 100
         df_result["평가금액(원)"] = df_result["total_val"]
         return df_result
 
-    tickers_info = tuple(
-        (h["ticker"], h["market"], h["avg"], h["qty"])
-        for h in holdings
+    # transactions를 tuple로 변환해서 캐시 키로 사용
+    transactions = get_all_transactions()
+    tx_tuple = tuple(
+        (t["ticker"], t["type"], t["qty"], t["price"], t["date"], t["market"])
+        for t in transactions
     )
 
     with st.spinner("수익률 데이터 불러오는 중..."):
-        hist_df = build_portfolio_history(tickers_info, period_opt, FX)
+        hist_df = build_portfolio_history(tx_tuple, period_opt, FX)
 
     if not hist_df.empty:
         fig = go.Figure()
