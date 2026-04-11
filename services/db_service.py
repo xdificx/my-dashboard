@@ -135,3 +135,30 @@ def get_closed_positions(transactions=None):
 # ══════════════════════════════════════════════════
 def get_all_holdings():
     return get_current_holdings()
+
+# ══════════════════════════════════════════════════
+#  cash_flows CRUD (입출금 이력)
+# ══════════════════════════════════════════════════
+def get_all_cash_flows():
+    res = supabase.table("cash_flows").select("*").order("date", desc=False).execute()
+    return res.data
+
+def add_cash_flow(data: dict):
+    supabase.table("cash_flows").insert(data).execute()
+
+def delete_cash_flow(id: int):
+    supabase.table("cash_flows").delete().eq("id", id).execute()
+
+def get_cash_summary():
+    """
+    총 입금액, 총 출금액, 순수 현금 투자액 계산
+    반환: {"total_deposit", "total_withdrawal", "net_cash"}
+    """
+    flows = get_all_cash_flows()
+    total_deposit    = sum(float(f["amount"]) for f in flows if f["type"] == "deposit")
+    total_withdrawal = sum(float(f["amount"]) for f in flows if f["type"] == "withdrawal")
+    return {
+        "total_deposit":    total_deposit,
+        "total_withdrawal": total_withdrawal,
+        "net_cash":         total_deposit - total_withdrawal,
+    }
