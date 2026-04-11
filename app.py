@@ -41,30 +41,56 @@ def get_ticker_data(ticker: str, label: str) -> dict:
         price = info.last_price
         prev  = info.previous_close
         if price and price > 0 and prev and prev > 0:
-            chg = (price - prev) / prev * 100
+            chg  = (price - prev) / prev * 100
+            diff = price - prev          # 포인트 등락
             return {
                 "label": label,
                 "price": round(price, 2),
                 "chg":   round(chg, 2),
+                "diff":  round(diff, 2),  # 전일 대비 포인트
                 "ok":    True,
             }
     except Exception:
         pass
-    return {"label": label, "price": None, "chg": None, "ok": False}
+    return {"label": label, "price": None, "chg": None, "diff": None, "ok": False}
 
 # ══════════════════════════════════════════════════
 #  공통 렌더링 헬퍼
 # ══════════════════════════════════════════════════
-def show_metric(col, d: dict):
+def show_metric(container, d: dict):
+    """증권사 앱 스타일 카드: ▲빨강 / ▼파랑, 퍼센트 배경 박스"""
     if d["ok"]:
-        col.metric(
-            d["label"],
-            f"{d['price']:,.2f}",
-            f"{d['chg']:+.2f}%",
-            delta_color="normal" if d["chg"] >= 0 else "inverse",
-        )
+        up     = d["chg"] >= 0
+        color  = "#e24b4a" if up else "#378add"
+        arrow  = "▲" if up else "▼"
+        diff_abs = abs(d["diff"])
+        chg_abs  = abs(d["chg"])
+        html = f"""
+<div style="padding:10px 4px 14px 4px; border-bottom:1px solid #e0e0e0;">
+  <div style="font-size:12px; color:#888; margin-bottom:2px;">{d["label"]}</div>
+  <div style="font-size:22px; font-weight:700; color:var(--text-color,#111); margin-bottom:4px;">
+    {d["price"]:,.2f}
+  </div>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="font-size:13px; font-weight:600; color:{color};">
+      {arrow} {diff_abs:,.2f}
+    </span>
+    <span style="background:{color}; color:#fff; font-size:12px;
+                 font-weight:700; padding:2px 8px; border-radius:4px;">
+      {chg_abs:.2f}%
+    </span>
+  </div>
+</div>"""
+        container.markdown(html, unsafe_allow_html=True)
     else:
-        col.metric(d["label"], "—", "조회 실패")
+        container.markdown(
+            f"""<div style="padding:10px 4px 14px 4px; border-bottom:1px solid #e0e0e0;">
+  <div style="font-size:12px; color:#888;">{d["label"]}</div>
+  <div style="font-size:22px; font-weight:700; color:#aaa;">—</div>
+  <div style="font-size:12px; color:#aaa;">조회 실패</div>
+</div>""",
+            unsafe_allow_html=True,
+        )
 
 # ══════════════════════════════════════════════════
 #  사이드바
@@ -98,45 +124,41 @@ fx_data = get_ticker_data("USDKRW=X", "원/달러 환율")
 FX = fx_data["price"] if fx_data["ok"] else 1330.0
 
 # ══════════════════════════════════════════════════
-#  섹션 1 — 국내 지수
+#  섹션 1·2·3 — 국내 지수 / 해외 지수 / 거시 지표
+#  3개 그룹을 가로 3열로 나란히, 각 항목은 세로 배치
 # ══════════════════════════════════════════════════
-st.subheader("🇰🇷 국내 지수")
 domestic = [
     get_ticker_data("^KS11",  "KOSPI"),
     get_ticker_data("^KQ11",  "KOSDAQ"),
     get_ticker_data("^KS200", "KOSPI 200"),
 ]
-cols = st.columns(3)
-for col, d in zip(cols, domestic):
-    show_metric(col, d)
-
-# ══════════════════════════════════════════════════
-#  섹션 2 — 해외 지수
-# ══════════════════════════════════════════════════
-st.subheader("🌎 해외 지수")
 foreign = [
     get_ticker_data("^GSPC", "S&P 500"),
     get_ticker_data("^IXIC", "나스닥"),
     get_ticker_data("^DJI",  "다우존스"),
 ]
-cols = st.columns(3)
-for col, d in zip(cols, foreign):
-    show_metric(col, d)
-
-# ══════════════════════════════════════════════════
-#  섹션 3 — 거시 지표
-# ══════════════════════════════════════════════════
-st.subheader("📡 거시 지표")
 macro = [
-    get_ticker_data("DX-Y.NYB", "달러 인덱스"),
     fx_data,
-    get_ticker_data("^TNX",     "미 10년 국채"),
-    get_ticker_data("GC=F",     "금 선물"),
-    get_ticker_data("CL=F",     "WTI 원유"),
+    get_ticker_data("^TNX", "미 10년 국채"),
+    get_ticker_data("^VIX", "변동성 (VIX)"),
 ]
-cols = st.columns(5)
-for col, d in zip(cols, macro):
-    show_metric(col, d)
+
+col_kr, col_us, col_macro = st.columns(3)
+
+with col_kr:
+    st.markdown("**🇰🇷 국내 지수**")
+    for d in domestic:
+        show_metric(st, d)
+
+with col_us:
+    st.markdown("**🌎 해외 지수**")
+    for d in foreign:
+        show_metric(st, d)
+
+with col_macro:
+    st.markdown("**📡 거시 지표**")
+    for d in macro:
+        show_metric(st, d)
 
 st.divider()
 
@@ -185,11 +207,12 @@ df = pd.DataFrame(rows)
 
 def _color_ret(v):
     if not isinstance(v, float): return ""
-    return "color:#e24b4a;font-weight:500" if v > 0 else "color:#378add;font-weight:500"
+    # 상승=빨강, 하락=파랑 (증권사 앱 기준)
+    return "color:#e24b4a;font-weight:600" if v > 0 else "color:#378add;font-weight:600"
 
 def _color_pnl(v):
     if not isinstance(v, int): return ""
-    return "color:#e24b4a;font-weight:500" if v > 0 else "color:#378add;font-weight:500"
+    return "color:#e24b4a;font-weight:600" if v > 0 else "color:#378add;font-weight:600"
 
 st.dataframe(
     df.style
