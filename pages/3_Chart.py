@@ -194,7 +194,7 @@ st.divider()
 # ── TYPE_MAP ───────────────────────────────────────
 TYPE_MAP = {
     "5분": {"period": "1d",  "interval": "5m",  "label": "당일 5분봉"},
-    "일":  {"period": "1y",  "interval": "1d",  "label": "일봉 (1년)"},
+    "일":  {"period": "3mo", "interval": "1d",  "label": "일봉 (3개월)"},
     "주":  {"period": "1y",  "interval": "1wk", "label": "주봉 (1년)"},
     "월":  {"period": "5y",  "interval": "1mo", "label": "월봉 (5년)"},
     "년":  {"period": "max", "interval": "3mo", "label": "분기봉 (전체)"},
