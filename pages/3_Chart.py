@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from services.data_service import get_history, get_ticker_data, get_ticker_name
+from services.data_service import get_history, get_ticker_data, get_ticker_name, get_stock_info
 from services.db_service import get_all_holdings, get_watchlist, add_watchlist, delete_watchlist
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -216,62 +216,104 @@ is_foreign = not any(ticker_to_show.upper().endswith(s)
 fx_info = get_ticker_data("USDKRW=X")
 FX_RATE = fx_info["price"] if fx_info.get("ok") else 1330.0
 
-if price_data.get("ok"):
-    up    = price_data["chg"] >= 0
-    color = "#e24b4a" if up else "#378add"
-    arrow = "▲" if up else "▼"
-    diff  = price_data["price"] * abs(price_data["chg"]) / 100
+# 세부정보 병렬 조회
+with st.spinner("종목 정보 불러오는 중..."):
+    stock_info = get_stock_info(ticker_to_show)
 
-    # 해외 종목이면 원화 환산 표시
-    krw_html = ""
-    if is_foreign:
-        krw_price = price_data["price"] * FX_RATE
-        krw_diff  = diff * FX_RATE
-        krw_html  = (f'<div style="font-size:12px;color:#888;margin-top:6px;">'
-                     f'≈ {krw_price:,.0f}원 &nbsp;'
-                     f'<span style="color:{color};">{arrow} {krw_diff:,.0f}원</span>'
-                     f'&nbsp;<span style="font-size:11px;">(1 USD = {FX_RATE:,.2f} KRW)</span>'
-                     f'</div>')
+# ── 종목 카드 + 세부정보 카드 나란히 ──────────────
+info_left, info_right = st.columns([2, 3], gap="medium")
 
-    st.markdown(f"""
-<div style="display:inline-flex;flex-direction:column;
-            background:#f9f9f9;border:1.5px solid #e0e0e0;
-            border-radius:12px;padding:14px 24px;margin-bottom:12px;">
-  <div style="display:flex;align-items:center;gap:24px;">
+with info_left:
+    if price_data.get("ok"):
+        up    = price_data["chg"] >= 0
+        color = "#e24b4a" if up else "#378add"
+        arrow = "▲" if up else "▼"
+        diff  = price_data["price"] * abs(price_data["chg"]) / 100
+        krw_html = ""
+        if is_foreign:
+            krw_price = price_data["price"] * FX_RATE
+            krw_diff  = diff * FX_RATE
+            krw_html  = (
+                f'<div style="font-size:12px;color:#888;margin-top:6px;">'
+                f'≈ {krw_price:,.0f}원 '
+                f'<span style="color:{color};">{arrow} {krw_diff:,.0f}원</span>'
+                f'<span style="font-size:11px;"> (1 USD = {FX_RATE:,.2f} KRW)</span>'
+                f'</div>'
+            )
+        exch = f' &nbsp;·&nbsp; {stock_info["거래소"]}' if stock_info.get("거래소") else ''
+        curr = f' &nbsp;·&nbsp; {stock_info["통화"]}' if stock_info.get("통화") else ''
+        sect = f'<div style="font-size:11px;color:#aaa;margin-top:2px;">{stock_info["섹터"]}</div>' if stock_info.get("섹터") else ''
+        st.markdown(f"""
+<div style="background:#f9f9f9;border:1.5px solid #e0e0e0;
+            border-radius:12px;padding:16px 20px;margin-bottom:12px;height:100%;">
+  <div style="display:flex;align-items:center;gap:20px;">
     <div>
       <div style="font-size:18px;font-weight:800;color:#111;">{display_name}</div>
-      <div style="font-size:12px;color:#888;margin-top:2px;">{ticker_to_show}</div>
+      <div style="font-size:12px;color:#888;margin-top:2px;">{ticker_to_show}{exch}{curr}</div>
+      {sect}
     </div>
-    <div style="width:1px;height:36px;background:#ddd;"></div>
+    <div style="width:1px;height:40px;background:#ddd;flex-shrink:0;"></div>
     <div>
-      <div style="font-size:28px;font-weight:700;color:#111;">
-        {price_data['price']:,.2f}
-      </div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:2px;">
-      <div style="font-size:14px;font-weight:600;color:{color};">
-        {arrow} {diff:,.2f}
-      </div>
-      <div style="font-size:14px;font-weight:600;color:{color};">
-        {arrow} {abs(price_data['chg']):.2f}%
+      <div style="font-size:26px;font-weight:700;color:#111;">{price_data['price']:,.2f}</div>
+      <div style="font-size:13px;font-weight:600;color:{color};margin-top:2px;">
+        {arrow} {diff:,.2f} &nbsp; {arrow} {abs(price_data['chg']):.2f}%
       </div>
     </div>
   </div>
   {krw_html}
 </div>
 """, unsafe_allow_html=True)
-else:
-    st.markdown(f"""
-<div style="display:inline-flex;align-items:center;gap:16px;
-            background:#f9f9f9;border:1.5px solid #e0e0e0;
-            border-radius:12px;padding:14px 24px;margin-bottom:12px;">
-  <div>
-    <div style="font-size:18px;font-weight:800;color:#111;">{display_name}</div>
-    <div style="font-size:12px;color:#888;">{ticker_to_show}</div>
-  </div>
-  <div style="font-size:14px;color:#aaa;">현재가 조회 실패</div>
+    else:
+        st.markdown(f"""
+<div style="background:#f9f9f9;border:1.5px solid #e0e0e0;
+            border-radius:12px;padding:16px 20px;margin-bottom:12px;">
+  <div style="font-size:18px;font-weight:800;color:#111;">{display_name}</div>
+  <div style="font-size:12px;color:#888;">{ticker_to_show}</div>
+  <div style="font-size:13px;color:#aaa;margin-top:8px;">현재가 조회 실패</div>
 </div>
 """, unsafe_allow_html=True)
+
+with info_right:
+    if stock_info:
+        groups = [
+            ("기업 규모",    ["시가총액", "발행주식수", "유동주식수", "평균거래량"]),
+            ("밸류에이션",   ["PER", "PBR", "EPS", "배당수익률", "베타(1Y)"]),
+            ("52주 범위",    ["52주 최고", "52주 최저"]),
+        ]
+        items_html = ""
+        for group_title, keys in groups:
+            row_items = [(k, stock_info[k]) for k in keys if stock_info.get(k)]
+            if not row_items:
+                continue
+            items_html += (
+                f'<div style="font-size:11px;color:#aaa;font-weight:600;'
+                f'margin:8px 0 4px 0;letter-spacing:0.5px;">{group_title}</div>'
+                f'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+            )
+            for k, v in row_items:
+                items_html += (
+                    f'<div style="background:#fff;border:1px solid #e8e8e8;'
+                    f'border-radius:8px;padding:5px 10px;font-size:12px;">'
+                    f'<span style="color:#888;">{k}</span>'
+                    f'<span style="font-weight:700;color:#111;margin-left:6px;">{v}</span>'
+                    f'</div>'
+                )
+            items_html += "</div>"
+        st.markdown(
+            f'<div style="background:#f9f9f9;border:1.5px solid #e0e0e0;'
+            f'border-radius:12px;padding:14px 16px;margin-bottom:12px;">'
+            f'{items_html}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            '<div style="background:#f9f9f9;border:1.5px solid #e0e0e0;'
+            'border-radius:12px;padding:14px 16px;margin-bottom:12px;'
+            'font-size:13px;color:#aaa;">세부정보 조회 실패</div>',
+            unsafe_allow_html=True
+        )
+
 
 # ── 데이터 로드 ────────────────────────────────────
 with st.spinner("차트 데이터 불러오는 중..."):
@@ -442,135 +484,66 @@ if chart_type == "5분":
 from datetime import date, timedelta
 import yfinance as yf
 
+# ── 자동 통계 계산 ──────────────────────────────
+try:
+    close_first = float(open_.iloc[0]) if chart_type == "5분" else float(close.iloc[0])
+    auto_ret    = (cur_close - close_first) / close_first * 100
+    auto_high   = float(high.max())
+    auto_low    = float(low.min())
+except Exception:
+    auto_ret = auto_high = auto_low = None
+
+# ── 세션 초기화 (최초 1회) ────────────────────
+_defs = {
+    "val_high": None, "val_low": None, "val_ret": None,
+    "tag_high": "",   "tag_low": "",   "tag_ret": "",
+}
+for k, v in _defs.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# ── 차트(좌 70%) + 지표 패널(우 30%) ─────────
 chart_col, panel_col = st.columns([7, 3], gap="small")
 
 with chart_col:
     st.plotly_chart(fig, use_container_width=True)
 
 with panel_col:
-    try:
-        close_first = float(open_.iloc[0]) if chart_type == "5분" else float(close.iloc[0])
-        auto_ret  = (cur_close - close_first) / close_first * 100
-        auto_high = float(high.max())
-        auto_low  = float(low.min())
-    except Exception:
-        auto_ret = auto_high = auto_low = None
+    # 값: 세션에 저장된 커스텀 값 우선, 없으면 자동
+    disp_high = st.session_state["val_high"] if st.session_state["val_high"] is not None else auto_high
+    disp_low  = st.session_state["val_low"]  if st.session_state["val_low"]  is not None else auto_low
+    disp_ret  = st.session_state["val_ret"]  if st.session_state["val_ret"]  is not None else auto_ret
 
-    # 카드별 세션 초기화
-    defaults = {
-        "cs_high": date.today() - timedelta(days=90), "ce_high": date.today(),
-        "cs_low":  date.today() - timedelta(days=90), "ce_low":  date.today(),
-        "cs_ret":  date.today() - timedelta(days=90), "ce_ret":  date.today(),
-        "val_high": auto_high, "val_low": auto_low, "val_ret": auto_ret,
-        "tag_high": "", "tag_low": "", "tag_ret": "",
-        "open_high": False, "open_low": False, "open_ret": False,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-    def stat_card(title, val_key, tag_key, open_key,
-                  cs_key, ce_key, auto_val, fmt, color=None):
-        val = st.session_state.get(val_key, auto_val)
-        tag = st.session_state.get(tag_key, "")
-
-        # 제목 + 톱니바퀴
-        t1, t2 = st.columns([5, 1])
-        t1.markdown(
-            f"<div style='font-size:11px;color:#888;font-weight:600;"
-            f"margin-top:10px;margin-bottom:2px;'>{title}</div>",
-            unsafe_allow_html=True
-        )
-        if t2.button("⚙", key=f"gear_{val_key}", help="기간 설정"):
-            st.session_state[open_key] = not st.session_state.get(open_key, False)
-
-        # 설정 펼침
-        if st.session_state.get(open_key, False):
-            with st.container(border=True):
-                mode = st.radio("기간", ["자동", "직접 설정"],
-                                key=f"mode_{val_key}", horizontal=True,
-                                label_visibility="collapsed")
-                if mode == "직접 설정":
-                    dc1, dc2 = st.columns(2)
-                    cs = dc1.date_input("시작", st.session_state[cs_key],
-                                        key=f"s_{val_key}")
-                    ce = dc2.date_input("종료", st.session_state[ce_key],
-                                        key=f"e_{val_key}")
-                    if st.button("계산", key=f"calc_{val_key}",
-                                 use_container_width=True):
-                        if cs < ce:
-                            with st.spinner("조회 중..."):
-                                try:
-                                    df_c = yf.download(
-                                        ticker_to_show,
-                                        start=str(cs), end=str(ce),
-                                        interval="1d", progress=False
-                                    )
-                                    if isinstance(df_c.columns, pd.MultiIndex):
-                                        df_c.columns = df_c.columns.get_level_values(0)
-                                    if not df_c.empty:
-                                        if "고가" in title:
-                                            st.session_state[val_key] = float(df_c["High"].max())
-                                        elif "저가" in title:
-                                            st.session_state[val_key] = float(df_c["Low"].min())
-                                        else:
-                                            o_ = float(df_c["Open"].iloc[0])
-                                            c_ = float(df_c["Close"].iloc[-1])
-                                            st.session_state[val_key] = (c_ - o_) / o_ * 100
-                                        st.session_state[cs_key]  = cs
-                                        st.session_state[ce_key]  = ce
-                                        st.session_state[tag_key] = f"{cs}~{ce}"
-                                        st.session_state[open_key] = False
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(str(e))
-                        else:
-                            st.warning("시작일 < 종료일")
-                else:
-                    st.session_state[val_key]  = auto_val
-                    st.session_state[tag_key]  = ""
-                    st.session_state[open_key] = False
-                    st.rerun()
-
-        # 카드 값
-        v = st.session_state.get(val_key, auto_val)
-        t = st.session_state.get(tag_key, "")
-        period_label = t if t else f"{chart_type}봉 전체"
-
-        if v is not None:
+    def mini_card(label, value, tag, fmt, color):
+        period_label = tag if tag else f"{chart_type}봉 전체"
+        if value is not None:
             if fmt == "ret":
-                up  = v >= 0
+                up  = value >= 0
                 clr = "#e24b4a" if up else "#378add"
                 arr = "▲" if up else "▼"
-                val_html = f'<span style="font-size:20px;font-weight:700;color:{clr};">{arr} {abs(v):.2f}%</span>'
+                val_html = f'<b style="font-size:20px;color:{clr};">{arr} {abs(value):.2f}%</b>'
             else:
-                clr      = color or "#111"
-                val_html = f'<span style="font-size:20px;font-weight:700;color:{clr};">{v:,.2f}</span>'
-
-            st.markdown(
-                f'<div style="background:#f9f9f9;border:1px solid #e0e0e0;'
-                f'border-radius:10px;padding:8px 12px 10px 12px;margin-bottom:2px;">'
-                f'{val_html}'
-                f'<div style="font-size:10px;color:#aaa;margin-top:3px;">{period_label}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+                val_html = f'<b style="font-size:20px;color:{color};">{value:,.2f}</b>'
         else:
-            st.markdown(
-                '<div style="background:#f9f9f9;border:1px solid #e0e0e0;'
-                'border-radius:10px;padding:8px 12px;color:#aaa;font-size:12px;">'
-                '조회 실패</div>', unsafe_allow_html=True
-            )
+            val_html = '<span style="color:#aaa;">—</span>'
 
-    stat_card("기간 고가", "val_high", "tag_high", "open_high",
-              "cs_high", "ce_high", auto_high, "price", "#e24b4a")
-    stat_card("기간 저가", "val_low",  "tag_low",  "open_low",
-              "cs_low",  "ce_low",  auto_low,  "price", "#378add")
-    stat_card("기간 수익률", "val_ret", "tag_ret", "open_ret",
-              "cs_ret",  "ce_ret",  auto_ret,  "ret")
+        return (
+            f'<div style="background:#f9f9f9;border:1px solid #e0e0e0;'
+            f'border-radius:10px;padding:8px 12px 10px 12px;margin-bottom:4px;">'
+            f'<div style="font-size:11px;color:#888;font-weight:600;margin-bottom:3px;">{label}</div>'
+            f'{val_html}'
+            f'<div style="font-size:10px;color:#aaa;margin-top:3px;">{period_label}</div>'
+            f'</div>'
+        )
+
+    st.markdown(
+        mini_card("기간 고가",   disp_high, st.session_state["tag_high"], "price", "#e24b4a") +
+        mini_card("기간 저가",   disp_low,  st.session_state["tag_low"],  "price", "#378add") +
+        mini_card("기간 수익률", disp_ret,  st.session_state["tag_ret"],  "ret",   ""),
+        unsafe_allow_html=True
+    )
 
     # RSI 카드
-    st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
     if not rsi.empty and not pd.isna(rsi.iloc[-1]):
         rv     = float(rsi.iloc[-1])
         rlabel = "과매수" if rv >= 70 else ("과매도" if rv <= 30 else "중립")
@@ -578,7 +551,8 @@ with panel_col:
         rbg    = "rgba(226,75,74,0.06)" if rv >= 70 else ("rgba(55,138,221,0.06)" if rv <= 30 else "#f9f9f9")
         rbar   = min(int(rv), 100)
         st.markdown(f"""
-<div style="background:{rbg};border:1px solid #e0e0e0;border-radius:10px;padding:8px 12px 10px 12px;">
+<div style="background:{rbg};border:1px solid #e0e0e0;border-radius:10px;
+            padding:8px 12px 10px 12px;margin-top:4px;">
   <div style="font-size:11px;color:#888;font-weight:600;margin-bottom:4px;">RSI (14)</div>
   <div style="font-size:20px;font-weight:700;color:{rcolor};">{rv:.1f}</div>
   <div style="font-size:11px;color:{rcolor};">{rlabel} {"(70 이상)" if rv>=70 else ("(30 이하)" if rv<=30 else "(30~70)")}</div>
@@ -588,3 +562,68 @@ with panel_col:
 </div>
 """, unsafe_allow_html=True)
 
+# ══════════════════════════════════════════════════
+#  기간 설정 섹션 (차트 아래 별도 배치 — 버튼 클릭 시 차트 재렌더링 없음)
+# ══════════════════════════════════════════════════
+st.markdown("---")
+st.markdown("#### 기간 직접 설정")
+st.caption("기간을 지정하면 위 카드의 값이 해당 기간 기준으로 업데이트됩니다.")
+
+g1, g2, g3 = st.columns(3, gap="medium")
+
+def period_form(col, title, val_key, tag_key, color):
+    with col:
+        with st.container(border=True):
+            st.markdown(f"**{title}**")
+            mode = st.radio(
+                "기간 선택",
+                ["자동 (차트 기간)", "직접 설정"],
+                key=f"mode_{val_key}",
+                label_visibility="collapsed",
+            )
+            if mode == "직접 설정":
+                saved_start = st.session_state.get(f"cs_{val_key}", date.today() - timedelta(days=90))
+                saved_end   = st.session_state.get(f"ce_{val_key}", date.today())
+                c1, c2 = st.columns(2)
+                cs = c1.date_input("시작일", value=saved_start, key=f"s_{val_key}")
+                ce = c2.date_input("종료일", value=saved_end,   key=f"e_{val_key}")
+                if st.button("계산", key=f"calc_{val_key}", use_container_width=True):
+                    if cs < ce:
+                        with st.spinner("조회 중..."):
+                            try:
+                                df_c = yf.download(
+                                    ticker_to_show,
+                                    start=str(cs), end=str(ce),
+                                    interval="1d", progress=False
+                                )
+                                if isinstance(df_c.columns, pd.MultiIndex):
+                                    df_c.columns = df_c.columns.get_level_values(0)
+                                if not df_c.empty:
+                                    if "고가" in title:
+                                        st.session_state[val_key] = float(df_c["High"].max())
+                                    elif "저가" in title:
+                                        st.session_state[val_key] = float(df_c["Low"].min())
+                                    else:
+                                        o_ = float(df_c["Open"].iloc[0])
+                                        c_ = float(df_c["Close"].iloc[-1])
+                                        st.session_state[val_key] = (c_ - o_) / o_ * 100
+                                    st.session_state[f"cs_{val_key}"] = cs
+                                    st.session_state[f"ce_{val_key}"] = ce
+                                    st.session_state[tag_key] = f"{cs} ~ {ce}"
+                                    st.rerun()
+                                else:
+                                    st.warning("해당 기간에 데이터가 없습니다.")
+                            except Exception as e:
+                                st.error(str(e))
+                    else:
+                        st.warning("시작일이 종료일보다 앞이어야 합니다.")
+            else:
+                # 자동으로 복귀
+                if st.session_state.get(val_key) is not None:
+                    st.session_state[val_key] = None
+                    st.session_state[tag_key] = ""
+                    st.rerun()
+
+period_form(g1, "기간 고가",   "val_high", "tag_high", "#e24b4a")
+period_form(g2, "기간 저가",   "val_low",  "tag_low",  "#378add")
+period_form(g3, "기간 수익률", "val_ret",  "tag_ret",  "#555")
