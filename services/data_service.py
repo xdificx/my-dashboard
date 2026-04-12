@@ -97,3 +97,16 @@ def get_holdings_prices(ticker_tuple: tuple) -> dict:
             except Exception:
                 results[futures[future]] = None
     return results
+
+@st.cache_data(ttl=3600)
+def get_ticker_name(ticker: str) -> str:
+    """티커로 종목명 자동 조회 (1시간 캐시)"""
+    try:
+        info = yf.Ticker(ticker).info
+        name = (info.get("longName")
+                or info.get("shortName")
+                or info.get("displayName")
+                or "")
+        return name.strip()
+    except Exception:
+        return ""
