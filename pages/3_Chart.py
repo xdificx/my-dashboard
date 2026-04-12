@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from services.data_service import get_history, get_ticker_data
+from services.data_service import get_history, get_ticker_data, get_ticker_name
 from services.db_service import get_all_holdings, get_watchlist, add_watchlist, delete_watchlist
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -126,15 +126,22 @@ with search_col:
     )
 
 with name_col:
+    # 티커 입력 시 종목명 자동 조회
+    auto_name = ""
+    if search_ticker and search_ticker.strip():
+        with st.spinner("종목명 조회 중..."):
+            auto_name = get_ticker_name(search_ticker.strip())
+
     search_name = st.text_input(
-        "종목명 (즐겨찾기 저장 시 사용)",
-        placeholder="종목명 (예: 삼성전자)",
+        "종목명",
+        value=auto_name,
+        placeholder="티커 입력 시 자동 조회됩니다",
         key="search_name",
         label_visibility="collapsed",
     )
 
 with add_col:
-    if st.button("⭐ 즐겨찾기 추가", use_container_width=True):
+    if st.button("즐겨찾기 추가", use_container_width=True):
         if search_ticker and search_name:
             add_watchlist(search_ticker.strip(), search_name.strip())
             st.success("즐겨찾기 추가됨")
@@ -201,33 +208,56 @@ if chart_type == "5분":
 price_data = get_ticker_data(ticker_to_show)
 display_name = search_name.strip() if search_name.strip() else ticker_to_show
 
+# 해외 종목 여부 판단 (KS·KQ·KX 없으면 해외)
+is_foreign = not any(ticker_to_show.upper().endswith(s)
+                     for s in [".KS", ".KQ", ".KX"])
+
+# 환율 조회
+fx_info = get_ticker_data("USDKRW=X")
+FX_RATE = fx_info["price"] if fx_info.get("ok") else 1330.0
+
 if price_data.get("ok"):
     up    = price_data["chg"] >= 0
     color = "#e24b4a" if up else "#378add"
     arrow = "▲" if up else "▼"
     diff  = price_data["price"] * abs(price_data["chg"]) / 100
+
+    # 해외 종목이면 원화 환산 표시
+    krw_html = ""
+    if is_foreign:
+        krw_price = price_data["price"] * FX_RATE
+        krw_diff  = diff * FX_RATE
+        krw_html  = (f'<div style="font-size:12px;color:#888;margin-top:6px;">'
+                     f'≈ {krw_price:,.0f}원 &nbsp;'
+                     f'<span style="color:{color};">{arrow} {krw_diff:,.0f}원</span>'
+                     f'&nbsp;<span style="font-size:11px;">(1 USD = {FX_RATE:,.2f} KRW)</span>'
+                     f'</div>')
+
     st.markdown(f"""
-<div style="display:inline-flex;align-items:center;gap:24px;
+<div style="display:inline-flex;flex-direction:column;
             background:#f9f9f9;border:1.5px solid #e0e0e0;
             border-radius:12px;padding:14px 24px;margin-bottom:12px;">
-  <div>
-    <div style="font-size:18px;font-weight:800;color:#111;">{display_name}</div>
-    <div style="font-size:12px;color:#888;margin-top:2px;">{ticker_to_show}</div>
-  </div>
-  <div style="width:1px;height:36px;background:#ddd;"></div>
-  <div>
-    <div style="font-size:28px;font-weight:700;color:#111;">
-      {price_data['price']:,.2f}
+  <div style="display:flex;align-items:center;gap:24px;">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:#111;">{display_name}</div>
+      <div style="font-size:12px;color:#888;margin-top:2px;">{ticker_to_show}</div>
+    </div>
+    <div style="width:1px;height:36px;background:#ddd;"></div>
+    <div>
+      <div style="font-size:28px;font-weight:700;color:#111;">
+        {price_data['price']:,.2f}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px;">
+      <div style="font-size:14px;font-weight:600;color:{color};">
+        {arrow} {diff:,.2f}
+      </div>
+      <div style="font-size:14px;font-weight:600;color:{color};">
+        {arrow} {abs(price_data['chg']):.2f}%
+      </div>
     </div>
   </div>
-  <div style="display:flex;flex-direction:column;gap:2px;">
-    <div style="font-size:14px;font-weight:600;color:{color};">
-      {arrow} {diff:,.2f}
-    </div>
-    <div style="font-size:14px;font-weight:600;color:{color};">
-      {arrow} {abs(price_data['chg']):.2f}%
-    </div>
-  </div>
+  {krw_html}
 </div>
 """, unsafe_allow_html=True)
 else:
