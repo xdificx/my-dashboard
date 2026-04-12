@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime
 from services.data_service import get_history, get_ticker_data, get_ticker_name, get_stock_info
 from services.db_service import get_all_holdings, get_watchlist, add_watchlist, delete_watchlist
+from services.krx_service import get_krx_stock_list, search_stocks
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -120,55 +121,143 @@ KR_HOLIDAYS = [
 holdings  = get_all_holdings()
 watchlist = get_watchlist()
 
-# 모드별 티커 입력 힌트
+# ══════════════════════════════════════════════════
+#  국내 종목 — KRX 자동완성 검색
+# ══════════════════════════════════════════════════
 if market_mode == "국내 종목 조회":
-    hint_html = """<div style="font-size:12px;color:#888;margin-bottom:4px;">
-      티커 입력 예시 &nbsp;|&nbsp;
-      코스피: <b>005930.KS</b> (삼성전자) &nbsp;
-      코스닥: <b>035720.KQ</b> (카카오) &nbsp;
-      <b>.KS</b> = 코스피, <b>.KQ</b> = 코스닥
-    </div>"""
-else:
-    hint_html = """<div style="font-size:12px;color:#888;margin-bottom:4px;">
-      티커 입력 예시 &nbsp;|&nbsp;
-      주식: <b>AAPL</b> &nbsp; <b>TSLA</b> &nbsp; <b>NVDA</b> &nbsp;|&nbsp;
-      ETF: <b>QQQ</b> &nbsp; <b>SPY</b> &nbsp; <b>SCHD</b>
-    </div>"""
-st.markdown(hint_html, unsafe_allow_html=True)
-
-search_col, name_col, add_col = st.columns([2, 2, 1])
-
-with search_col:
-    search_ticker = st.text_input(
-        "종목 검색 (티커 직접 입력)",
-        placeholder="005930.KS  /  AAPL",
-        key="search_ticker",
-        label_visibility="collapsed",
+    st.markdown(
+        '<div style="font-size:12px;color:#888;margin-bottom:4px;">'
+        '종목명 또는 종목코드(6자리)로 검색 &nbsp;|&nbsp; '
+        '코스피·코스닥 전체 종목 지원</div>',
+        unsafe_allow_html=True
     )
 
-with name_col:
-    # 티커 입력 시 종목명 자동 조회
-    auto_name = ""
-    if search_ticker and search_ticker.strip():
-        with st.spinner("종목명 조회 중..."):
-            auto_name = get_ticker_name(search_ticker.strip())
+    # KRX 종목 목록 로드
+    with st.spinner("KRX 종목 목록 불러오는 중..."):
+        krx_stocks = get_krx_stock_list()
 
-    search_name = st.text_input(
-        "종목명",
-        value=auto_name,
-        placeholder="티커 입력 시 자동 조회됩니다",
-        key="search_name",
-        label_visibility="collapsed",
-    )
+    if not krx_stocks:
+        st.warning("KRX 종목 목록을 불러오지 못했습니다. 티커를 직접 입력해주세요.")
+        krx_available = False
+    else:
+        krx_available = True
+        st.caption(f"코스피+코스닥 총 {len(krx_stocks):,}개 종목")
 
-with add_col:
-    if st.button("즐겨찾기 추가", use_container_width=True):
-        if search_ticker and search_name:
-            add_watchlist(search_ticker.strip(), search_name.strip())
-            st.success("즐겨찾기 추가됨")
-            st.rerun()
+    # 시장 필터
+    mf1, mf2 = st.columns([2, 3])
+    with mf1:
+        kr_market_filter = st.radio(
+            "시장 필터",
+            ["전체", "KOSPI", "KOSDAQ"],
+            horizontal=True,
+            key="kr_market_filter",
+            label_visibility="collapsed",
+        )
+
+    kc1, kc2, kc3 = st.columns([3, 2, 1])
+
+    with kc1:
+        kr_query = st.text_input(
+            "종목 검색",
+            placeholder="삼성전자 / 005930",
+            key="kr_query",
+            label_visibility="collapsed",
+        )
+
+    # 검색 결과 처리
+    search_ticker = ""
+    search_name   = ""
+
+    if kr_query and krx_available:
+        # 시장 필터 적용
+        filtered_stocks = krx_stocks
+        if kr_market_filter == "KOSPI":
+            filtered_stocks = [s for s in krx_stocks if s["market"] == "KOSPI"]
+        elif kr_market_filter == "KOSDAQ":
+            filtered_stocks = [s for s in krx_stocks if s["market"] == "KOSDAQ"]
+        results = search_stocks(kr_query, filtered_stocks, limit=10)
+
+        if results:
+            options = [f"{r['name']}  ({r['code']} · {r['market']})" for r in results]
+            selected_idx = kc2.selectbox(
+                "검색 결과",
+                range(len(options)),
+                format_func=lambda i: options[i],
+                key="kr_select",
+                label_visibility="collapsed",
+            )
+            selected_stock = results[selected_idx]
+            search_ticker  = selected_stock["ticker"]
+            search_name    = selected_stock["name"]
+
+            # 선택된 종목 표시
+            st.markdown(
+                f'<div style="font-size:12px;color:#555;margin-top:2px;">'
+                f'선택: <b>{search_name}</b> &nbsp; '
+                f'<code>{search_ticker}</code> &nbsp; {selected_stock["market"]}</div>',
+                unsafe_allow_html=True
+            )
         else:
-            st.warning("티커와 종목명을 입력하세요.")
+            kc2.warning("검색 결과가 없습니다.")
+    elif kr_query and not krx_available:
+        # KRX 실패 시 직접 입력으로 폴백
+        search_ticker = kr_query.strip()
+        if not search_ticker.endswith((".KS", ".KQ")):
+            search_ticker += ".KS"
+        search_name = search_ticker
+
+    with kc3:
+        if st.button("즐겨찾기 추가", use_container_width=True, key="add_kr"):
+            if search_ticker and search_name:
+                add_watchlist(search_ticker, search_name)
+                st.success("추가됨")
+                st.rerun()
+            else:
+                st.warning("종목을 먼저 선택하세요.")
+
+# ══════════════════════════════════════════════════
+#  해외 종목 — 티커 직접 입력
+# ══════════════════════════════════════════════════
+else:
+    st.markdown(
+        '<div style="font-size:12px;color:#888;margin-bottom:4px;">'
+        '티커 입력 예시 &nbsp;|&nbsp; '
+        '주식: <b>AAPL</b> &nbsp; <b>TSLA</b> &nbsp; <b>NVDA</b> &nbsp;|&nbsp; '
+        'ETF: <b>QQQ</b> &nbsp; <b>SPY</b> &nbsp; <b>SCHD</b></div>',
+        unsafe_allow_html=True
+    )
+
+    fc1, fc2, fc3 = st.columns([2, 2, 1])
+
+    with fc1:
+        search_ticker = st.text_input(
+            "티커 입력",
+            placeholder="AAPL / TSLA / QQQ",
+            key="search_ticker",
+            label_visibility="collapsed",
+        )
+
+    with fc2:
+        auto_name = ""
+        if search_ticker and search_ticker.strip():
+            with st.spinner("종목명 조회 중..."):
+                auto_name = get_ticker_name(search_ticker.strip())
+        search_name = st.text_input(
+            "종목명",
+            value=auto_name,
+            placeholder="티커 입력 시 자동 조회됩니다",
+            key="search_name",
+            label_visibility="collapsed",
+        )
+
+    with fc3:
+        if st.button("즐겨찾기 추가", use_container_width=True, key="add_us"):
+            if search_ticker and search_name:
+                add_watchlist(search_ticker.strip(), search_name.strip())
+                st.success("추가됨")
+                st.rerun()
+            else:
+                st.warning("티커와 종목명을 입력하세요.")
 
 # 빠른 선택 버튼 (보유 종목 + 즐겨찾기)
 quick_items = []
