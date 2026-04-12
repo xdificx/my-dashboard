@@ -69,8 +69,8 @@ if mode in ("buy", "sell"):
 
         f_ticker = c1.text_input("티커", placeholder="005930.KS", key="f_ticker")
         f_name   = c2.text_input("종목명", placeholder="삼성전자",  key="f_name")
-        f_qty    = c3.number_input("수량", min_value=0.0001, value=1.0,
-                                   format="%.4f", key="f_qty")
+        f_qty    = c3.number_input("수량", min_value=1, value=1,
+                                   step=1, key="f_qty")
         f_price  = c4.number_input(
             "매수가" if mode == "buy" else "매도가",
             min_value=0.0, value=0.0, format="%.2f", key="f_price"
@@ -202,8 +202,8 @@ with tab1:
             with edit_tab1:
                 st.caption("새 수량을 입력하면 현재 수량과의 차이만큼 매수/매도 이력이 자동으로 추가됩니다.")
                 new_qty = st.number_input(
-                    "새 수량", min_value=0.0, value=float(edit_h["qty"]),
-                    format="%.4f", key="edit_qty"
+                    "새 수량", min_value=1, value=max(1, int(edit_h["qty"])),
+                    step=1, key="edit_qty"
                 )
                 diff = new_qty - edit_h["qty"]
                 if diff > 0:
@@ -216,7 +216,7 @@ with tab1:
                         adjust_holding_qty(
                             edit_h["ticker"], edit_h["name"],
                             edit_h["market"], edit_h.get("is_etf", False),
-                            edit_h["qty"], new_qty, edit_h["avg_price"]
+                            edit_h["qty"], float(new_qty), edit_h["avg_price"]
                         )
                         st.success(f"수량이 {edit_h['qty']:.4f} → {new_qty:.4f} 로 변경됐습니다.")
                         st.rerun()
