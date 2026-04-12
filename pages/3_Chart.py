@@ -14,7 +14,25 @@ st.set_page_config(
 )
 
 with st.sidebar:
-    st.markdown("### ⚙️ 설정")
+    st.markdown("### 차트 설정")
+
+    st.markdown("**차트 유형**")
+    chart_type = st.radio(
+        "차트 유형",
+        ["5분", "일", "주", "월", "년"],
+        index=1,
+        key="chart_type",
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    st.markdown("**보조 지표**")
+    show_ma   = st.checkbox("이동평균선 (MA5·20·60·120)", value=True,  key="show_ma")
+    show_rsi  = st.checkbox("RSI (14)",                   value=True,  key="show_rsi")
+    show_macd = st.checkbox("MACD (12,26,9)",             value=False, key="show_macd")
+
+    st.divider()
     st.caption(f"갱신 시각\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 st.markdown("""
@@ -166,22 +184,7 @@ if not ticker_to_show:
 
 st.divider()
 
-# ── 차트 유형 + 지표 선택 ──────────────────────────
-type_col, ind_col = st.columns([2, 3])
-
-with type_col:
-    chart_type = st.radio(
-        "차트 유형",
-        ["5분", "일", "주", "월", "년"],
-        horizontal=True, index=1,
-        key="chart_type",
-    )
-
-with ind_col:
-    show_ma   = st.checkbox("이동평균선", value=True,  key="show_ma")
-    show_rsi  = st.checkbox("RSI",        value=True,  key="show_rsi")
-    show_macd = st.checkbox("MACD",       value=False, key="show_macd")
-
+# ── TYPE_MAP ───────────────────────────────────────
 TYPE_MAP = {
     "5분": {"period": "1d",  "interval": "5m",  "label": "당일 5분봉"},
     "일":  {"period": "1y",  "interval": "1d",  "label": "일봉 (1년)"},
@@ -202,16 +205,41 @@ if price_data.get("ok"):
     up    = price_data["chg"] >= 0
     color = "#e24b4a" if up else "#378add"
     arrow = "▲" if up else "▼"
+    diff  = price_data["price"] * abs(price_data["chg"]) / 100
     st.markdown(f"""
-<div style="display:flex;align-items:baseline;gap:16px;margin-bottom:8px;">
-  <span style="font-size:20px;font-weight:800;">{display_name}</span>
-  <span style="font-size:13px;color:#888;">{ticker_to_show}</span>
-  <span style="font-size:26px;font-weight:700;color:{color};">
-    {price_data['price']:,.2f}
-  </span>
-  <span style="font-size:14px;color:{color};font-weight:600;">
-    {arrow} {abs(price_data['chg']):.2f}%
-  </span>
+<div style="display:inline-flex;align-items:center;gap:24px;
+            background:#f9f9f9;border:1.5px solid #e0e0e0;
+            border-radius:12px;padding:14px 24px;margin-bottom:12px;">
+  <div>
+    <div style="font-size:18px;font-weight:800;color:#111;">{display_name}</div>
+    <div style="font-size:12px;color:#888;margin-top:2px;">{ticker_to_show}</div>
+  </div>
+  <div style="width:1px;height:36px;background:#ddd;"></div>
+  <div>
+    <div style="font-size:28px;font-weight:700;color:#111;">
+      {price_data['price']:,.2f}
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:2px;">
+    <div style="font-size:14px;font-weight:600;color:{color};">
+      {arrow} {diff:,.2f}
+    </div>
+    <div style="font-size:14px;font-weight:600;color:{color};">
+      {arrow} {abs(price_data['chg']):.2f}%
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+else:
+    st.markdown(f"""
+<div style="display:inline-flex;align-items:center;gap:16px;
+            background:#f9f9f9;border:1.5px solid #e0e0e0;
+            border-radius:12px;padding:14px 24px;margin-bottom:12px;">
+  <div>
+    <div style="font-size:18px;font-weight:800;color:#111;">{display_name}</div>
+    <div style="font-size:12px;color:#888;">{ticker_to_show}</div>
+  </div>
+  <div style="font-size:14px;color:#aaa;">현재가 조회 실패</div>
 </div>
 """, unsafe_allow_html=True)
 
