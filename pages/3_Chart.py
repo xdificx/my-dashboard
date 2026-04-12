@@ -439,24 +439,152 @@ fig.update_yaxes(showgrid=True, gridcolor="rgba(150,150,150,0.1)")
 if chart_type == "5분":
     fig.update_xaxes(tickformat="%H:%M")
 
-st.plotly_chart(fig, use_container_width=True)
+from datetime import date, timedelta
+import yfinance as yf
 
-# ── 기간 통계 ──────────────────────────────────────
-st.markdown("---")
-try:
-    close_first = float(open_.iloc[0]) if chart_type == "5분" else float(close.iloc[0])
-    period_ret  = (cur_close - close_first) / close_first * 100
-    label_ret   = "당일 등락률" if chart_type == "5분" else "기간 수익률"
+chart_col, panel_col = st.columns([7, 3], gap="small")
 
-    s1, s2, s3, s4, s5 = st.columns(5)
-    s1.metric("현재가",    f"{cur_close:,.2f}")
-    s2.metric("기간 고가", f"{float(high.max()):,.2f}")
-    s3.metric("기간 저가", f"{float(low.min()):,.2f}")
-    s4.metric(label_ret,   f"{period_ret:+.2f}%",
-              delta_color="normal" if period_ret >= 0 else "inverse")
+with chart_col:
+    st.plotly_chart(fig, use_container_width=True)
+
+with panel_col:
+    try:
+        close_first = float(open_.iloc[0]) if chart_type == "5분" else float(close.iloc[0])
+        auto_ret  = (cur_close - close_first) / close_first * 100
+        auto_high = float(high.max())
+        auto_low  = float(low.min())
+    except Exception:
+        auto_ret = auto_high = auto_low = None
+
+    # 카드별 세션 초기화
+    defaults = {
+        "cs_high": date.today() - timedelta(days=90), "ce_high": date.today(),
+        "cs_low":  date.today() - timedelta(days=90), "ce_low":  date.today(),
+        "cs_ret":  date.today() - timedelta(days=90), "ce_ret":  date.today(),
+        "val_high": auto_high, "val_low": auto_low, "val_ret": auto_ret,
+        "tag_high": "", "tag_low": "", "tag_ret": "",
+        "open_high": False, "open_low": False, "open_ret": False,
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    def stat_card(title, val_key, tag_key, open_key,
+                  cs_key, ce_key, auto_val, fmt, color=None):
+        val = st.session_state.get(val_key, auto_val)
+        tag = st.session_state.get(tag_key, "")
+
+        # 제목 + 톱니바퀴
+        t1, t2 = st.columns([5, 1])
+        t1.markdown(
+            f"<div style='font-size:11px;color:#888;font-weight:600;"
+            f"margin-top:10px;margin-bottom:2px;'>{title}</div>",
+            unsafe_allow_html=True
+        )
+        if t2.button("⚙", key=f"gear_{val_key}", help="기간 설정"):
+            st.session_state[open_key] = not st.session_state.get(open_key, False)
+
+        # 설정 펼침
+        if st.session_state.get(open_key, False):
+            with st.container(border=True):
+                mode = st.radio("기간", ["자동", "직접 설정"],
+                                key=f"mode_{val_key}", horizontal=True,
+                                label_visibility="collapsed")
+                if mode == "직접 설정":
+                    dc1, dc2 = st.columns(2)
+                    cs = dc1.date_input("시작", st.session_state[cs_key],
+                                        key=f"s_{val_key}")
+                    ce = dc2.date_input("종료", st.session_state[ce_key],
+                                        key=f"e_{val_key}")
+                    if st.button("계산", key=f"calc_{val_key}",
+                                 use_container_width=True):
+                        if cs < ce:
+                            with st.spinner("조회 중..."):
+                                try:
+                                    df_c = yf.download(
+                                        ticker_to_show,
+                                        start=str(cs), end=str(ce),
+                                        interval="1d", progress=False
+                                    )
+                                    if isinstance(df_c.columns, pd.MultiIndex):
+                                        df_c.columns = df_c.columns.get_level_values(0)
+                                    if not df_c.empty:
+                                        if "고가" in title:
+                                            st.session_state[val_key] = float(df_c["High"].max())
+                                        elif "저가" in title:
+                                            st.session_state[val_key] = float(df_c["Low"].min())
+                                        else:
+                                            o_ = float(df_c["Open"].iloc[0])
+                                            c_ = float(df_c["Close"].iloc[-1])
+                                            st.session_state[val_key] = (c_ - o_) / o_ * 100
+                                        st.session_state[cs_key]  = cs
+                                        st.session_state[ce_key]  = ce
+                                        st.session_state[tag_key] = f"{cs}~{ce}"
+                                        st.session_state[open_key] = False
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(str(e))
+                        else:
+                            st.warning("시작일 < 종료일")
+                else:
+                    st.session_state[val_key]  = auto_val
+                    st.session_state[tag_key]  = ""
+                    st.session_state[open_key] = False
+                    st.rerun()
+
+        # 카드 값
+        v = st.session_state.get(val_key, auto_val)
+        t = st.session_state.get(tag_key, "")
+        period_label = t if t else f"{chart_type}봉 전체"
+
+        if v is not None:
+            if fmt == "ret":
+                up  = v >= 0
+                clr = "#e24b4a" if up else "#378add"
+                arr = "▲" if up else "▼"
+                val_html = f'<span style="font-size:20px;font-weight:700;color:{clr};">{arr} {abs(v):.2f}%</span>'
+            else:
+                clr      = color or "#111"
+                val_html = f'<span style="font-size:20px;font-weight:700;color:{clr};">{v:,.2f}</span>'
+
+            st.markdown(
+                f'<div style="background:#f9f9f9;border:1px solid #e0e0e0;'
+                f'border-radius:10px;padding:8px 12px 10px 12px;margin-bottom:2px;">'
+                f'{val_html}'
+                f'<div style="font-size:10px;color:#aaa;margin-top:3px;">{period_label}</div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                '<div style="background:#f9f9f9;border:1px solid #e0e0e0;'
+                'border-radius:10px;padding:8px 12px;color:#aaa;font-size:12px;">'
+                '조회 실패</div>', unsafe_allow_html=True
+            )
+
+    stat_card("기간 고가", "val_high", "tag_high", "open_high",
+              "cs_high", "ce_high", auto_high, "price", "#e24b4a")
+    stat_card("기간 저가", "val_low",  "tag_low",  "open_low",
+              "cs_low",  "ce_low",  auto_low,  "price", "#378add")
+    stat_card("기간 수익률", "val_ret", "tag_ret", "open_ret",
+              "cs_ret",  "ce_ret",  auto_ret,  "ret")
+
+    # RSI 카드
+    st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
     if not rsi.empty and not pd.isna(rsi.iloc[-1]):
-        rv    = float(rsi.iloc[-1])
+        rv     = float(rsi.iloc[-1])
         rlabel = "과매수" if rv >= 70 else ("과매도" if rv <= 30 else "중립")
-        s5.metric(f"RSI({rlabel})", f"{rv:.1f}")
-except Exception:
-    pass
+        rcolor = "#e24b4a" if rv >= 70 else ("#378add" if rv <= 30 else "#555")
+        rbg    = "rgba(226,75,74,0.06)" if rv >= 70 else ("rgba(55,138,221,0.06)" if rv <= 30 else "#f9f9f9")
+        rbar   = min(int(rv), 100)
+        st.markdown(f"""
+<div style="background:{rbg};border:1px solid #e0e0e0;border-radius:10px;padding:8px 12px 10px 12px;">
+  <div style="font-size:11px;color:#888;font-weight:600;margin-bottom:4px;">RSI (14)</div>
+  <div style="font-size:20px;font-weight:700;color:{rcolor};">{rv:.1f}</div>
+  <div style="font-size:11px;color:{rcolor};">{rlabel} {"(70 이상)" if rv>=70 else ("(30 이하)" if rv<=30 else "(30~70)")}</div>
+  <div style="background:#e0e0e0;border-radius:4px;height:4px;margin-top:6px;">
+    <div style="background:{rcolor};width:{rbar}%;height:4px;border-radius:4px;"></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
