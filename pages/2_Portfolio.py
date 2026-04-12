@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
-from services.data_service import get_ticker_data
+from services.data_service import get_ticker_data, get_holdings_prices
 from services.db_service import (
     get_all_transactions, add_transaction, delete_transaction,
     get_current_holdings, get_closed_positions,
@@ -123,11 +123,15 @@ with tab1:
         st.info("매수 내역을 추가하면 보유 종목이 표시됩니다.")
     else:
         # ── 수익률 테이블 ──────────────────────────────
+        with st.spinner("현재가 조회 중..."):
+            tickers_tuple = tuple(h["ticker"] for h in holdings)
+            prices = get_holdings_prices(tickers_tuple)
+
         rows = []
         for h in holdings:
-            d = get_ticker_data(h["ticker"])
-            if d.get("ok"):
-                row = calculate_portfolio_row(h, d["price"], FX)
+            price = prices.get(h["ticker"])
+            if price:
+                row = calculate_portfolio_row(h, price, FX)
                 rows.append(row)
             else:
                 rows.append({
