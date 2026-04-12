@@ -47,18 +47,85 @@ def show_card(d: dict):
 #  사이드바
 # ══════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("### ⚙️ 설정")
-    auto_refresh = st.toggle("5분 자동 갱신", value=True)
+    # ── 날짜·시간 (한 줄) ─────────────────────────
+    now = datetime.now()
+    weekday = ["월","화","수","목","금","토","일"][now.weekday()]
+    st.markdown(f"""
+<div style="padding:8px 0 6px 0;font-size:13px;color:#555;font-weight:600;">
+  {now.strftime('%Y.%m.%d')}({weekday}) &nbsp; {now.strftime('%H:%M:%S')}
+</div>
+""", unsafe_allow_html=True)
+
     st.divider()
-    # 하단 여백을 밀어넣어 데이터 출처를 최하단에 고정
+
+    # ── 연동 상태 ──────────────────────────────────
+    st.markdown("**연동 상태**")
+
+    @st.cache_data(ttl=60)
+    def _check_yfinance():
+        try:
+            p = yf.Ticker("^GSPC").fast_info.last_price
+            return p and p > 0
+        except Exception:
+            return False
+
+    @st.cache_data(ttl=60)
+    def _check_supabase():
+        try:
+            from services.supabase_client import supabase
+            supabase.table("transactions").select("id").limit(1).execute()
+            return True
+        except Exception:
+            return False
+
+    @st.cache_data(ttl=60)
+    def _check_render():
+        try:
+            import os
+            return os.environ.get("RENDER") is not None or True
+        except Exception:
+            return False
+
+    yf_ok     = _check_yfinance()
+    db_ok     = _check_supabase()
+    render_ok = _check_render()
+
+    def _row(ok: bool, label: str) -> str:
+        dot    = "🟢" if ok else "🔴"
+        color  = "#333" if ok else "#e24b4a"
+        status = "정상" if ok else "연결 실패"
+        return (f'<div style="display:flex;justify-content:space-between;'
+                f'font-size:13px;padding:3px 0;">'
+                f'<span>{dot} {label}</span>'
+                f'<span style="color:{color};font-size:11px;">{status}</span></div>')
+
+    st.markdown(
+        _row(render_ok, "Render 서버") +
+        _row(yf_ok,     "Yahoo Finance") +
+        _row(db_ok,     "Supabase DB"),
+        unsafe_allow_html=True
+    )
+
+    if not all([render_ok, yf_ok, db_ok]):
+        st.caption("연결 실패 항목이 있습니다.")
+
+    st.divider()
+
+    # ── 설정 ───────────────────────────────────────
+    st.markdown("**설정**")
+    auto_refresh = st.toggle("5분 자동 갱신", value=True)
+
+    st.divider()
+
+    # ── 하단 고정: 데이터 출처 ─────────────────────
     st.markdown(
         """<div style="position:fixed;bottom:20px;left:0;width:18rem;
                        padding:0 1.5rem;box-sizing:border-box;
-                       font-size:13px;color:#888;line-height:1.8;">
-        📡 데이터: Yahoo Finance<br>
-        ⏱ 15분 지연<br>
-        🕐 갱신: {now}
-        </div>""".format(now=__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')),
+                       font-size:12px;color:#aaa;line-height:1.8;">
+        데이터: Yahoo Finance<br>
+        15분 지연<br>
+        최종 갱신: {now}
+        </div>""".format(now=now.strftime('%Y-%m-%d %H:%M')),
         unsafe_allow_html=True
     )
 
