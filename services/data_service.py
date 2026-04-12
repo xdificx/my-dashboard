@@ -99,23 +99,43 @@ def get_holdings_prices(ticker_tuple: tuple) -> dict:
     return results
 
 @st.cache_data(ttl=3600)
+def _fetch_info(ticker: str) -> dict:
+    """
+    .info를 1회만 호출하고 결과 캐시 (1시간)
+    get_ticker_name / get_stock_info 모두 이 함수를 통해 사용
+    재시도 3회 포함
+    """
+    import time
+    last_exc = None
+    for attempt in range(3):
+        try:
+            info = yf.Ticker(ticker).info
+            if info and len(info) > 5:   # 정상 응답 확인
+                return info
+        except Exception as e:
+            last_exc = e
+            time.sleep(1.5 * (attempt + 1))  # 1.5초 / 3초 / 4.5초 대기
+    return {}
+
+
+@st.cache_data(ttl=3600)
 def get_ticker_name(ticker: str) -> str:
-    """티커로 종목명 자동 조회 (1시간 캐시)"""
-    try:
-        info = yf.Ticker(ticker).info
-        name = (info.get("longName")
-                or info.get("shortName")
-                or info.get("displayName")
-                or "")
-        return name.strip()
-    except Exception:
-        return ""
+    """티커로 종목명 자동 조회 (1시간 캐시, .info 재활용)"""
+    info = _fetch_info(ticker)
+    name = (info.get("longName")
+            or info.get("shortName")
+            or info.get("displayName")
+            or "")
+    return name.strip()
+
+
 @st.cache_data(ttl=3600)
 def get_stock_info(ticker: str) -> dict:
     """종목 세부정보 조회 (1시간 캐시)"""
+    info = _fetch_info(ticker)
     try:
-        t    = yf.Ticker(ticker)
-        info = t.info
+        if not info:
+            return {}
 
         def fmt_num(v):
             if v is None: return None
@@ -133,15 +153,20 @@ def get_stock_info(ticker: str) -> dict:
         def fcomma(v):
             return f"{v:,.2f}" if v is not None else None
 
+        # ── 기본 정보
         currency   = info.get("currency", "")
         exchange   = info.get("exchange", "")
         sector     = info.get("sector") or info.get("industry") or ""
+
+        # ── 밸류에이션
         per        = info.get("trailingPE")
         fper       = info.get("forwardPE")
         pbr        = info.get("priceToBook")
         psr        = info.get("priceToSalesTrailing12Months")
         peg        = info.get("pegRatio")
         ev_ebitda  = info.get("enterpriseToEbitda")
+
+        # ── 수익성
         eps        = info.get("trailingEps")
         roe        = info.get("returnOnEquity")
         roa        = info.get("returnOnAssets")
@@ -149,17 +174,25 @@ def get_stock_info(ticker: str) -> dict:
         profit_m   = info.get("profitMargins")
         rev_growth = info.get("revenueGrowth")
         earn_growth= info.get("earningsGrowth")
+
+        # ── 배당
         div_yield  = info.get("dividendYield")
         div_rate   = info.get("dividendRate")
         payout     = info.get("payoutRatio")
         div5y      = info.get("fiveYearAvgDividendYield")
+
+        # ── 재무 안정성
         debt_eq    = info.get("debtToEquity")
         cur_ratio  = info.get("currentRatio")
         beta       = info.get("beta")
+
+        # ── FCF (영업현금흐름 - CAPEX)
         fcf        = info.get("freeCashflow")
         op_cf      = info.get("operatingCashflow")
         market_cap = info.get("marketCap")
         fcf_yield  = (fcf / market_cap * 100) if (fcf and market_cap) else None
+
+        # ── 기업 규모
         shares_out = info.get("sharesOutstanding")
         float_shr  = info.get("floatShares")
         avg_vol    = info.get("averageVolume")
@@ -167,12 +200,14 @@ def get_stock_info(ticker: str) -> dict:
         week52l    = info.get("fiftyTwoWeekLow")
 
         return {
+            # 기업 규모
             "시가총액":       fmt_num(market_cap) if market_cap else None,
             "발행주식수":     fmt_num(shares_out) if shares_out else None,
             "유동주식수":     fmt_num(float_shr)  if float_shr  else None,
             "평균거래량":     fmt_num(avg_vol)     if avg_vol    else None,
             "52주 최고":      fcomma(week52h)      if week52h    else None,
             "52주 최저":      fcomma(week52l)      if week52l    else None,
+            # 밸류에이션
             "PER":            f2(per)       if per       else None,
             "선행 PER":       f2(fper)      if fper      else None,
             "PBR":            f2(pbr)       if pbr       else None,
@@ -180,22 +215,27 @@ def get_stock_info(ticker: str) -> dict:
             "PEG":            f2(peg)       if peg       else None,
             "EV/EBITDA":      f2(ev_ebitda) if ev_ebitda else None,
             "EPS":            fcomma(eps)   if eps       else None,
+            # 수익성
             "ROE":            pct(roe)       if roe       else None,
             "ROA":            pct(roa)       if roa       else None,
             "영업이익률":     pct(op_margin) if op_margin else None,
             "순이익률":       pct(profit_m)  if profit_m  else None,
             "매출 성장률":    pct(rev_growth)  if rev_growth  else None,
             "이익 성장률":    pct(earn_growth) if earn_growth else None,
+            # FCF
             "FCF":            fmt_num(fcf)   if fcf    else None,
             "영업현금흐름":   fmt_num(op_cf) if op_cf  else None,
             "FCF Yield":      f"{fcf_yield:.2f}%" if fcf_yield else None,
+            # 배당
             "배당수익률":     pct(div_yield) if div_yield else None,
             "배당금(연간)":   fcomma(div_rate) if div_rate else None,
             "배당성향":       pct(payout)    if payout   else None,
             "5Y 평균배당수익률": f"{div5y:.2f}%" if div5y else None,
+            # 재무 안정성
             "부채비율":       f"{debt_eq:.1f}%" if debt_eq else None,
             "유동비율":       f2(cur_ratio)  if cur_ratio else None,
             "베타(1Y)":       f2(beta)       if beta      else None,
+            # 기본 정보
             "섹터":   sector   if sector   else None,
             "거래소": exchange if exchange else None,
             "통화":   currency if currency else None,
