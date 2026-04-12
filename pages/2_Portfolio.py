@@ -5,7 +5,9 @@ from services.data_service import get_ticker_data
 from services.db_service import (
     get_all_transactions, add_transaction, delete_transaction,
     get_current_holdings, get_closed_positions,
-    get_all_cash_flows, add_cash_flow, delete_cash_flow, get_cash_summary
+    get_all_cash_flows, add_cash_flow, delete_cash_flow, get_cash_summary,
+    adjust_holding_qty, adjust_holding_avg_price,
+    delete_transactions_by_ticker, get_transactions_by_ticker
 )
 from services.calculations import calculate_portfolio_row
 
@@ -120,6 +122,7 @@ with tab1:
     if not holdings:
         st.info("매수 내역을 추가하면 보유 종목이 표시됩니다.")
     else:
+        # ── 수익률 테이블 ──────────────────────────────
         rows = []
         for h in holdings:
             d = get_ticker_data(h["ticker"])
@@ -128,12 +131,12 @@ with tab1:
                 rows.append(row)
             else:
                 rows.append({
-                    "종목":       h["name"],
-                    "현재가":     "조회 실패",
-                    "수량":       h["qty"],
+                    "종목":        h["name"],
+                    "현재가":      "조회 실패",
+                    "수량":        h["qty"],
                     "평가금액(원)": "-",
                     "평가손익(원)": "-",
-                    "수익률(%)":  None,
+                    "수익률(%)":   None,
                 })
 
         df = pd.DataFrame(rows)
@@ -147,6 +150,7 @@ with tab1:
             use_container_width=True, hide_index=True,
         )
 
+        # ── 포트폴리오 요약 ────────────────────────────
         try:
             total_val  = sum(
                 int(str(r["평가금액(원)"]).replace(",",""))
@@ -171,6 +175,99 @@ with tab1:
             st.caption(f"적용 환율: 1 USD = {FX:,.2f} KRW")
         except Exception:
             pass
+
+        # ── 종목 수정 패널 ─────────────────────────────
+        st.markdown("---")
+        st.markdown("#### ✏️ 종목 수정")
+        st.caption("수정할 종목을 선택하세요. 수량·평균단가·종목명·티커를 변경하거나 종목을 삭제할 수 있습니다.")
+
+        edit_names   = [h["name"] for h in holdings]
+        edit_selected = st.selectbox("수정할 종목", edit_names, key="edit_select")
+        edit_h        = next(h for h in holdings if h["name"] == edit_selected)
+
+        with st.container(border=True):
+            st.markdown(f"**{edit_h['name']}** `{edit_h['ticker']}` | "
+                        f"현재 수량: **{edit_h['qty']:.4f}** | "
+                        f"평균단가: **{edit_h['avg_price']:,.2f}**")
+
+            edit_tab1, edit_tab2, edit_tab3, edit_tab4 = st.tabs(
+                ["📦 수량 변경", "💰 평균단가 변경", "🏷️ 종목명·티커 변경", "🗑️ 종목 삭제"]
+            )
+
+            # ① 수량 변경
+            with edit_tab1:
+                st.caption("새 수량을 입력하면 현재 수량과의 차이만큼 매수/매도 이력이 자동으로 추가됩니다.")
+                new_qty = st.number_input(
+                    "새 수량", min_value=0.0, value=float(edit_h["qty"]),
+                    format="%.4f", key="edit_qty"
+                )
+                diff = new_qty - edit_h["qty"]
+                if diff > 0:
+                    st.info(f"▲ {abs(diff):.4f} 매수 이력이 추가됩니다. (단가: {edit_h['avg_price']:,.2f})")
+                elif diff < 0:
+                    st.info(f"▼ {abs(diff):.4f} 매도 이력이 추가됩니다. (단가: {edit_h['avg_price']:,.2f})")
+
+                if st.button("수량 변경 저장", key="save_qty", use_container_width=True):
+                    if abs(diff) > 0.0001:
+                        adjust_holding_qty(
+                            edit_h["ticker"], edit_h["name"],
+                            edit_h["market"], edit_h.get("is_etf", False),
+                            edit_h["qty"], new_qty, edit_h["avg_price"]
+                        )
+                        st.success(f"수량이 {edit_h['qty']:.4f} → {new_qty:.4f} 로 변경됐습니다.")
+                        st.rerun()
+                    else:
+                        st.warning("수량이 동일합니다.")
+
+            # ② 평균단가 변경
+            with edit_tab2:
+                st.caption("평균단가를 수정하면 기존 매수 이력의 단가가 모두 새 값으로 업데이트됩니다.")
+                new_avg = st.number_input(
+                    "새 평균단가", min_value=0.0,
+                    value=float(edit_h["avg_price"]),
+                    format="%.2f", key="edit_avg"
+                )
+                if st.button("평균단가 변경 저장", key="save_avg", use_container_width=True):
+                    if abs(new_avg - edit_h["avg_price"]) > 0.001:
+                        adjust_holding_avg_price(edit_h["ticker"], new_avg)
+                        st.success(f"평균단가가 {edit_h['avg_price']:,.2f} → {new_avg:,.2f} 로 변경됐습니다.")
+                        st.rerun()
+                    else:
+                        st.warning("단가가 동일합니다.")
+
+            # ③ 종목명·티커 변경
+            with edit_tab3:
+                st.caption("종목명 또는 티커가 잘못 입력된 경우 수정할 수 있습니다.")
+                new_name   = st.text_input("새 종목명", value=edit_h["name"],   key="edit_name")
+                new_ticker = st.text_input("새 티커",   value=edit_h["ticker"], key="edit_ticker")
+
+                if st.button("종목명·티커 변경 저장", key="save_info", use_container_width=True):
+                    txs = get_transactions_by_ticker(edit_h["ticker"])
+                    for t in txs:
+                        update_data = {}
+                        if new_name   != edit_h["name"]:   update_data["name"]   = new_name
+                        if new_ticker != edit_h["ticker"]: update_data["ticker"] = new_ticker
+                        if update_data:
+                            from services.db_service import update_transaction
+                            update_transaction(t["id"], update_data)
+                    st.success("종목 정보가 변경됐습니다.")
+                    st.rerun()
+
+            # ④ 종목 삭제
+            with edit_tab4:
+                st.warning(
+                    f"**{edit_h['name']}** 의 모든 거래 이력이 삭제됩니다. "
+                    "이 작업은 되돌릴 수 없습니다."
+                )
+                confirm = st.checkbox("삭제를 확인합니다", key="del_confirm")
+                if st.button("종목 전체 삭제", type="secondary",
+                             key="del_holding", use_container_width=True):
+                    if confirm:
+                        delete_transactions_by_ticker(edit_h["ticker"])
+                        st.success(f"{edit_h['name']} 삭제 완료")
+                        st.rerun()
+                    else:
+                        st.error("삭제 확인 체크박스를 체크해주세요.")
 
 # ─────────────────────────────────────────────────
 #  탭 2 — 매도 완료 종목
