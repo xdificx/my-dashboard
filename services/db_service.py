@@ -178,3 +178,56 @@ def add_watchlist(ticker: str, name: str):
 
 def delete_watchlist(id: int):
     supabase.table("watchlist").delete().eq("id", id).execute()
+
+# ══════════════════════════════════════════════════
+#  종목 수정 헬퍼
+# ══════════════════════════════════════════════════
+def get_transactions_by_ticker(ticker: str):
+    """특정 티커의 모든 거래 이력 반환"""
+    res = supabase.table("transactions").select("*") \
+        .eq("ticker", ticker).order("date", desc=False).execute()
+    return res.data
+
+def delete_transactions_by_ticker(ticker: str):
+    """특정 티커의 모든 거래 이력 삭제 (종목 전체 삭제)"""
+    supabase.table("transactions").delete().eq("ticker", ticker).execute()
+
+def adjust_holding_qty(ticker: str, name: str, market: str,
+                       is_etf: bool, current_qty: float,
+                       new_qty: float, avg_price: float):
+    """
+    수량 변경 — 차이만큼 buy/sell 자동 추가
+    new_qty > current_qty : 차이만큼 buy 추가
+    new_qty < current_qty : 차이만큼 sell 추가
+    """
+    diff = new_qty - current_qty
+    if abs(diff) < 0.0001:
+        return
+    tx_type = "buy" if diff > 0 else "sell"
+    add_transaction({
+        "ticker":  ticker,
+        "name":    name,
+        "market":  market,
+        "is_etf":  is_etf,
+        "type":    tx_type,
+        "qty":     abs(diff),
+        "price":   avg_price,
+        "date":    str(date.today()),
+    })
+
+def adjust_holding_avg_price(ticker: str, new_avg: float):
+    """
+    평균단가 변경 — 해당 티커의 모든 buy 거래 단가를 비율로 조정
+    (전체 매수금액을 유지하면서 단가만 새로 설정)
+    실제로는 buy 이력 전체를 합산 후 단가를 균일하게 재설정
+    """
+    txs = get_transactions_by_ticker(ticker)
+    buy_txs = [t for t in txs if t["type"] == "buy"]
+    if not buy_txs:
+        return
+    total_qty = sum(float(t["qty"]) for t in buy_txs)
+    if total_qty <= 0:
+        return
+    # buy 거래 단가를 새로운 평균단가로 일괄 업데이트
+    for t in buy_txs:
+        update_transaction(t["id"], {"price": new_avg})
