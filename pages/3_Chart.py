@@ -14,6 +14,16 @@ st.set_page_config(
 )
 
 with st.sidebar:
+    st.markdown("### 조회 모드")
+    market_mode = st.radio(
+        "조회 모드",
+        ["국내 종목 조회", "해외 종목 조회"],
+        key="market_mode",
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
     st.markdown("### 차트 설정")
 
     st.markdown("**차트 유형**")
@@ -35,12 +45,16 @@ with st.sidebar:
     st.divider()
     st.caption(f"갱신 시각\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-st.markdown("""
+# 모드에 따른 헤더 표시
+mode_label = "국내 종목" if market_mode == "국내 종목 조회" else "해외 종목"
+mode_flag  = "🇰🇷" if market_mode == "국내 종목 조회" else "🌎"
+st.markdown(f"""
 <div style="padding:8px 0 4px 0;">
   <span style="font-size:28px;font-weight:800;">📈 Chart</span>
+  <span style="font-size:16px;color:#888;margin-left:12px;">{mode_flag} {mode_label} 조회</span>
 </div>
 <div style="font-size:12px;color:#888;margin-bottom:8px;">
-  종목 검색 · 캔들차트 · 이동평균선 · RSI · MACD
+  캔들차트 · 이동평균선 · RSI · MACD · 세부 지표
 </div>
 """, unsafe_allow_html=True)
 
@@ -106,14 +120,21 @@ KR_HOLIDAYS = [
 holdings  = get_all_holdings()
 watchlist = get_watchlist()
 
-# 티커 입력 힌트
-st.markdown("""
-<div style="font-size:12px;color:#888;margin-bottom:4px;">
-  💡 티커 입력 예시 &nbsp;|&nbsp;
-  국내: <b>005930.KS</b> (코스피) &nbsp; <b>035720.KQ</b> (코스닥) &nbsp;|&nbsp;
-  해외: <b>AAPL</b> &nbsp; <b>TSLA</b> &nbsp; <b>QQQ</b>
-</div>
-""", unsafe_allow_html=True)
+# 모드별 티커 입력 힌트
+if market_mode == "국내 종목 조회":
+    hint_html = """<div style="font-size:12px;color:#888;margin-bottom:4px;">
+      티커 입력 예시 &nbsp;|&nbsp;
+      코스피: <b>005930.KS</b> (삼성전자) &nbsp;
+      코스닥: <b>035720.KQ</b> (카카오) &nbsp;
+      <b>.KS</b> = 코스피, <b>.KQ</b> = 코스닥
+    </div>"""
+else:
+    hint_html = """<div style="font-size:12px;color:#888;margin-bottom:4px;">
+      티커 입력 예시 &nbsp;|&nbsp;
+      주식: <b>AAPL</b> &nbsp; <b>TSLA</b> &nbsp; <b>NVDA</b> &nbsp;|&nbsp;
+      ETF: <b>QQQ</b> &nbsp; <b>SPY</b> &nbsp; <b>SCHD</b>
+    </div>"""
+st.markdown(hint_html, unsafe_allow_html=True)
 
 search_col, name_col, add_col = st.columns([2, 2, 1])
 
@@ -208,9 +229,10 @@ if chart_type == "5분":
 price_data = get_ticker_data(ticker_to_show)
 display_name = search_name.strip() if search_name.strip() else ticker_to_show
 
-# 해외 종목 여부 판단 (KS·KQ·KX 없으면 해외)
-is_foreign = not any(ticker_to_show.upper().endswith(s)
-                     for s in [".KS", ".KQ", ".KX"])
+# 해외 종목 여부 판단 (사이드바 모드 + 티커 접미사 복합 판단)
+is_foreign = (market_mode == "해외 종목 조회") or not any(
+    ticker_to_show.upper().endswith(s) for s in [".KS", ".KQ", ".KX"]
+)
 
 # 환율 조회
 fx_info = get_ticker_data("USDKRW=X")
@@ -627,7 +649,6 @@ def period_form(col, title, val_key, tag_key, color):
 period_form(g1, "기간 고가",   "val_high", "tag_high", "#e24b4a")
 period_form(g2, "기간 저가",   "val_low",  "tag_low",  "#378add")
 period_form(g3, "기간 수익률", "val_ret",  "tag_ret",  "#555")
-
 # ══════════════════════════════════════════════════
 #  세부 지표 섹션
 # ══════════════════════════════════════════════════
@@ -637,7 +658,6 @@ st.markdown("#### 세부 지표")
 if not stock_info:
     st.info("세부 지표를 불러오지 못했습니다. 티커를 확인해주세요.")
 else:
-    # 지표 그룹 정의 + 각 지표별 설명
     INDICATOR_META = {
         "PER":            ("주가수익비율",       "주가 ÷ EPS. 낮을수록 이익 대비 저렴. 업종 평균과 비교 필수."),
         "선행 PER":       ("선행 주가수익비율",   "미래 추정 이익 기준 PER. 현재 PER보다 낮으면 이익 성장 기대."),
@@ -683,7 +703,6 @@ else:
         for i, (key, val) in enumerate(items):
             col = cols[i % 5]
             meta_name, meta_desc = INDICATOR_META.get(key, (key, ""))
-            # 툴팁 텍스트에서 따옴표 이스케이프
             safe_desc = meta_desc.replace('"', '&quot;').replace("'", '&#39;')
             with col:
                 st.markdown(f"""
@@ -709,4 +728,185 @@ else:
 </div>
 """, unsafe_allow_html=True)
         st.markdown("")
-st.markdown("")
+# ══════════════════════════════════════════════════
+#  해외 종목 전용 — 재무제표 + 애널리스트 목표주가
+# ══════════════════════════════════════════════════
+if is_foreign and ticker_to_show:
+    import yfinance as yf
+    from datetime import date
+
+    @st.cache_data(ttl=3600)
+    def get_financials(ticker: str) -> dict:
+        """연간/분기 재무제표 + 애널리스트 정보"""
+        try:
+            t = yf.Ticker(ticker)
+            info = t.info
+
+            # ── 애널리스트 목표주가
+            target_mean  = info.get("targetMeanPrice")
+            target_high  = info.get("targetHighPrice")
+            target_low   = info.get("targetLowPrice")
+            recommend    = info.get("recommendationKey", "")
+            num_analysts = info.get("numberOfAnalystOpinions")
+            current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+
+            # ── 연간 손익계산서
+            try:
+                inc_annual = t.income_stmt
+            except Exception:
+                inc_annual = None
+
+            # ── 분기 손익계산서
+            try:
+                inc_quarter = t.quarterly_income_stmt
+            except Exception:
+                inc_quarter = None
+
+            # ── 연간 현금흐름
+            try:
+                cf_annual = t.cashflow
+            except Exception:
+                cf_annual = None
+
+            return {
+                "target_mean":   target_mean,
+                "target_high":   target_high,
+                "target_low":    target_low,
+                "recommend":     recommend,
+                "num_analysts":  num_analysts,
+                "current_price": current_price,
+                "inc_annual":    inc_annual,
+                "inc_quarter":   inc_quarter,
+                "cf_annual":     cf_annual,
+            }
+        except Exception:
+            return {}
+
+    with st.spinner("재무 데이터 불러오는 중..."):
+        fin = get_financials(ticker_to_show)
+
+    if fin:
+        st.markdown("---")
+        st.markdown("#### 해외 종목 상세 재무 정보")
+
+        # ── 애널리스트 목표주가 ──────────────────────
+        if fin.get("target_mean"):
+            st.markdown("**애널리스트 목표주가**")
+            cur  = fin.get("current_price") or 0
+            mean = fin["target_mean"]
+            high = fin.get("target_high")
+            low  = fin.get("target_low")
+            rec  = fin.get("recommend", "").replace("_", " ").upper()
+            num  = fin.get("num_analysts")
+            upside = (mean - cur) / cur * 100 if cur else 0
+
+            rec_color = {
+                "STRONG BUY": "#e24b4a", "BUY": "#ff7c7c",
+                "HOLD": "#888888", "UNDERPERFORM": "#378add",
+                "SELL": "#1a5fb5",
+            }.get(rec, "#888888")
+
+            a1, a2, a3, a4, a5 = st.columns(5)
+            a1.metric("현재가",    f"{cur:,.2f}")
+            a2.metric("목표 평균", f"{mean:,.2f}",
+                      delta=f"{upside:+.1f}%",
+                      delta_color="normal" if upside >= 0 else "inverse")
+            a3.metric("목표 최고", f"{high:,.2f}" if high else "—")
+            a4.metric("목표 최저", f"{low:,.2f}"  if low  else "—")
+            a5.metric("애널리스트 수", f"{num}명" if num else "—")
+
+            st.markdown(
+                f'<div style="margin-top:4px;font-size:13px;">'
+                f'컨센서스: <b style="color:{rec_color};">{rec if rec else "—"}</b>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+        st.divider()
+
+        # ── 연간 / 분기 재무제표 탭 ─────────────────
+        fin_tab1, fin_tab2, fin_tab3 = st.tabs(
+            ["📅 연간 손익계산서", "📆 분기 손익계산서", "💵 연간 현금흐름"]
+        )
+
+        def fmt_fin_val(v):
+            """재무제표 값 포맷"""
+            if v is None or (hasattr(v, '__class__') and 'NaN' in str(v)):
+                return "—"
+            try:
+                v = float(v)
+                if abs(v) >= 1e9:  return f"{v/1e9:.2f}B"
+                if abs(v) >= 1e6:  return f"{v/1e6:.2f}M"
+                if abs(v) >= 1e3:  return f"{v/1e3:.2f}K"
+                return f"{v:.2f}"
+            except Exception:
+                return "—"
+
+        def render_fin_table(df, key_map):
+            """재무제표 DataFrame을 보기 좋게 렌더링"""
+            if df is None or df.empty:
+                st.info("데이터를 불러오지 못했습니다.")
+                return
+            import pandas as pd
+            rows_html = ""
+            cols = list(df.columns)[:4]  # 최근 4기간만
+            col_labels = [str(c)[:10] for c in cols]
+
+            # 헤더
+            header = "<tr><th style='text-align:left;padding:6px 10px;background:#2E75B6;color:#fff;'>항목</th>"
+            for lbl in col_labels:
+                header += f"<th style='text-align:right;padding:6px 10px;background:#2E75B6;color:#fff;'>{lbl}</th>"
+            header += "</tr>"
+
+            for i, (raw_key, display_key) in enumerate(key_map.items()):
+                if raw_key not in df.index:
+                    continue
+                bg = "#f9f9f9" if i % 2 == 0 else "#ffffff"
+                row = (f"<tr style='background:{bg};'>"
+                       f"<td style='padding:6px 10px;font-size:12px;font-weight:600;color:#555;'>"
+                       f"{display_key}</td>")
+                for c in cols:
+                    val = fmt_fin_val(df.loc[raw_key, c])
+                    row += f"<td style='text-align:right;padding:6px 10px;font-size:12px;'>{val}</td>"
+                row += "</tr>"
+                rows_html += row
+
+            if not rows_html:
+                st.info("표시할 데이터가 없습니다.")
+                return
+
+            st.markdown(
+                f'<div style="overflow-x:auto;">'
+                f'<table style="width:100%;border-collapse:collapse;font-family:Arial;">'
+                f'<thead>{header}</thead>'
+                f'<tbody>{rows_html}</tbody>'
+                f'</table></div>',
+                unsafe_allow_html=True
+            )
+
+        INCOME_MAP = {
+            "Total Revenue":          "매출액",
+            "Gross Profit":           "매출총이익",
+            "Operating Income":       "영업이익",
+            "EBITDA":                 "EBITDA",
+            "Net Income":             "순이익",
+            "Basic EPS":              "EPS (기본)",
+            "Diluted EPS":            "EPS (희석)",
+        }
+
+        CF_MAP = {
+            "Operating Cash Flow":    "영업현금흐름",
+            "Capital Expenditure":    "설비투자(CAPEX)",
+            "Free Cash Flow":         "잉여현금흐름(FCF)",
+            "Repurchase Of Capital Stock": "자사주 매입",
+            "Cash Dividends Paid":    "배당금 지급",
+        }
+
+        with fin_tab1:
+            render_fin_table(fin.get("inc_annual"), INCOME_MAP)
+
+        with fin_tab2:
+            render_fin_table(fin.get("inc_quarter"), INCOME_MAP)
+
+        with fin_tab3:
+            render_fin_table(fin.get("cf_annual"), CF_MAP)
