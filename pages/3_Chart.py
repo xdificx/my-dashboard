@@ -627,3 +627,86 @@ def period_form(col, title, val_key, tag_key, color):
 period_form(g1, "기간 고가",   "val_high", "tag_high", "#e24b4a")
 period_form(g2, "기간 저가",   "val_low",  "tag_low",  "#378add")
 period_form(g3, "기간 수익률", "val_ret",  "tag_ret",  "#555")
+
+# ══════════════════════════════════════════════════
+#  세부 지표 섹션
+# ══════════════════════════════════════════════════
+st.markdown("---")
+st.markdown("#### 세부 지표")
+
+if not stock_info:
+    st.info("세부 지표를 불러오지 못했습니다. 티커를 확인해주세요.")
+else:
+    # 지표 그룹 정의 + 각 지표별 설명
+    INDICATOR_META = {
+        "PER":            ("주가수익비율",       "주가 ÷ EPS. 낮을수록 이익 대비 저렴. 업종 평균과 비교 필수."),
+        "선행 PER":       ("선행 주가수익비율",   "미래 추정 이익 기준 PER. 현재 PER보다 낮으면 이익 성장 기대."),
+        "PBR":            ("주가순자산비율",       "주가 ÷ 순자산. 1 미만이면 자산보다 싸게 거래 중."),
+        "PSR":            ("주가매출비율",         "주가 ÷ 매출. 적자 기업 밸류에이션에 활용."),
+        "PEG":            ("주가이익성장비율",     "PER ÷ EPS성장률. 1 이하면 성장 대비 저평가."),
+        "EV/EBITDA":      ("기업가치/상각전이익", "부채 포함 기업가치 ÷ EBITDA. 6~10배가 일반적."),
+        "EPS":            ("주당순이익",           "주식 1주당 이익. 꾸준히 성장하는 기업이 핵심."),
+        "ROE":            ("자기자본이익률",       "순이익 ÷ 자기자본. 15% 이상이면 우량 기업."),
+        "ROA":            ("총자산이익률",         "순이익 ÷ 총자산. 자산 활용 효율성 측정."),
+        "영업이익률":     ("영업이익률",           "영업이익 ÷ 매출. 본업 경쟁력을 가장 직접적으로 반영."),
+        "순이익률":       ("순이익률",             "순이익 ÷ 매출. 영업이익률보다 일회성 항목 영향 받음."),
+        "매출 성장률":    ("매출 성장률",          "전년 대비 매출 증가율. 성장세 지속 여부 확인."),
+        "이익 성장률":    ("이익 성장률",          "전년 대비 이익 증가율. 매출보다 빠르면 수익성 개선 중."),
+        "FCF":            ("잉여현금흐름",         "영업현금흐름 − CAPEX. 실제 사용 가능한 현금. 이익보다 신뢰도 높음."),
+        "FCF Yield":      ("FCF 수익률",           "FCF ÷ 시가총액. 국채 금리보다 높으면 주식이 매력적."),
+        "영업현금흐름":   ("영업현금흐름",         "본업에서 창출한 현금. FCF 계산의 기반."),
+        "배당수익률":     ("배당수익률",           "배당금 ÷ 주가. 은행 금리와 비교해 투자 매력도 판단."),
+        "배당금(연간)":   ("연간 배당금",          "1주당 연간 배당금. 배당 지속 가능성을 FCF와 함께 확인."),
+        "배당성향":       ("배당성향",             "배당금 ÷ 순이익. 70% 이하면 배당 지속 안정적."),
+        "5Y 평균배당수익률": ("5년 평균 배당수익률", "최근 5년 평균. 현재 배당수익률과 비교해 고저 판단."),
+        "부채비율":       ("부채비율",             "총부채 ÷ 자기자본. 200% 이하가 일반적 안전권."),
+        "유동비율":       ("유동비율",             "유동자산 ÷ 유동부채. 1.5 이상이면 단기 지급 능력 양호."),
+        "베타(1Y)":       ("베타",                 "시장 대비 변동성. 1 초과면 시장보다 변동 큼, 미만이면 방어적."),
+    }
+
+    GROUPS = [
+        ("밸류에이션",   ["PER", "선행 PER", "PBR", "PSR", "PEG", "EV/EBITDA", "EPS"]),
+        ("수익성",       ["ROE", "ROA", "영업이익률", "순이익률", "매출 성장률", "이익 성장률"]),
+        ("현금흐름",     ["FCF", "FCF Yield", "영업현금흐름"]),
+        ("배당",         ["배당수익률", "배당금(연간)", "배당성향", "5Y 평균배당수익률"]),
+        ("재무 안정성",  ["부채비율", "유동비율", "베타(1Y)"]),
+    ]
+
+    for group_title, keys in GROUPS:
+        items = [(k, stock_info.get(k)) for k in keys if stock_info.get(k)]
+        if not items:
+            continue
+
+        st.markdown(f"**{group_title}**")
+        cols = st.columns(len(items) if len(items) <= 5 else 5)
+
+        for i, (key, val) in enumerate(items):
+            col = cols[i % 5]
+            meta_name, meta_desc = INDICATOR_META.get(key, (key, ""))
+            # 툴팁 텍스트에서 따옴표 이스케이프
+            safe_desc = meta_desc.replace('"', '&quot;').replace("'", '&#39;')
+            with col:
+                st.markdown(f"""
+<div style="background:#f9f9f9;border:1px solid #e0e0e0;
+            border-radius:10px;padding:10px 12px;margin-bottom:8px;
+            position:relative;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+    <div style="font-size:11px;color:#888;font-weight:600;">{key}</div>
+    <div style="position:relative;display:inline-block;">
+      <span style="font-size:13px;color:#bbb;cursor:help;line-height:1;"
+            onmouseenter="this.nextElementSibling.style.display='block'"
+            onmouseleave="this.nextElementSibling.style.display='none'">&#9432;</span>
+      <div style="display:none;position:absolute;right:0;top:20px;
+                  background:#333;color:#fff;font-size:11px;
+                  padding:6px 10px;border-radius:6px;
+                  width:200px;line-height:1.5;z-index:9999;
+                  white-space:normal;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+        {safe_desc}
+      </div>
+    </div>
+  </div>
+  <div style="font-size:18px;font-weight:700;color:#111;margin-top:3px;">{val}</div>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown("")
+st.markdown("")
