@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import time
 from datetime import datetime, timedelta
-from services.data_service import get_ticker_data, get_history
+from services.data_service import get_ticker_data, get_history, get_multiple_tickers, get_holdings_prices
 from services.db_service import get_all_holdings, get_current_holdings, get_all_transactions, get_cash_summary
 from services.calculations import calculate_portfolio_row
 import plotly.graph_objects as go
@@ -43,11 +43,6 @@ def show_card(d: dict):
 </div>""", unsafe_allow_html=True)
 
 
-def fetch(ticker, label):
-    d = get_ticker_data(ticker)
-    d["label"] = label
-    return d
-
 # ══════════════════════════════════════════════════
 #  사이드바
 # ══════════════════════════════════════════════════
@@ -67,26 +62,40 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-fx = fetch("USDKRW=X", "원/달러 환율")
-FX = fx["price"] if fx.get("ok") else 1330.0
-
 # ══════════════════════════════════════════════════
 #  종목 분류 함수 (도넛 차트용)
-#  is_etf 컬럼 기반으로 정확하게 분류
 # ══════════════════════════════════════════════════
 def classify_holding(h: dict) -> str:
-    """보유 종목을 4개 카테고리로 분류 (is_etf 컬럼 기준)"""
     market = h.get("market", "KR")
     is_etf = h.get("is_etf", False)
-
     if market == "KR":
         return "국내 ETF" if is_etf else "국내 개별 종목"
     else:
         return "해외 ETF" if is_etf else "해외 개별 종목"
 
 # ══════════════════════════════════════════════════
-#  섹션 1 — Market Indicator + 도넛 차트 (같은 행)
+#  섹션 1 — Market Indicator + 도넛 차트 (병렬 로딩)
 # ══════════════════════════════════════════════════
+
+# 모든 Market Indicator 티커를 한 번에 병렬 조회
+MARKET_TICKERS = (
+    ("USDKRW=X", "원/달러 환율"),
+    ("^KS11",    "KOSPI"),
+    ("^KQ11",    "KOSDAQ"),
+    ("^KS200",   "KOSPI 200"),
+    ("^GSPC",    "S&P 500"),
+    ("^IXIC",    "나스닥"),
+    ("^DJI",     "다우존스"),
+    ("^TNX",     "미 10년 국채"),
+    ("^VIX",     "변동성 (VIX)"),
+)
+
+with st.spinner("시장 데이터 불러오는 중..."):
+    market_data = get_multiple_tickers(MARKET_TICKERS)
+
+fx_d = market_data.get("USDKRW=X", {})
+FX   = fx_d.get("price") or 1330.0
+
 left_col, right_col = st.columns([3, 2], gap="medium")
 
 with left_col:
@@ -98,8 +107,8 @@ with left_col:
             '<div style="background:#fff5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
             '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">🇰🇷 국내 지수</div>',
             unsafe_allow_html=True)
-        for t, n in [("^KS11","KOSPI"),("^KQ11","KOSDAQ"),("^KS200","KOSPI 200")]:
-            show_card(fetch(t, n))
+        for t in ["^KS11","^KQ11","^KS200"]:
+            show_card(market_data.get(t, {"label": t, "ok": False}))
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_us:
@@ -107,8 +116,8 @@ with left_col:
             '<div style="background:#f5f8ff;border-radius:12px;padding:14px 16px 6px 16px;">'
             '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">🌎 해외 지수</div>',
             unsafe_allow_html=True)
-        for t, n in [("^GSPC","S&P 500"),("^IXIC","나스닥"),("^DJI","다우존스")]:
-            show_card(fetch(t, n))
+        for t in ["^GSPC","^IXIC","^DJI"]:
+            show_card(market_data.get(t, {"label": t, "ok": False}))
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_macro:
@@ -116,8 +125,8 @@ with left_col:
             '<div style="background:#f5f5f5;border-radius:12px;padding:14px 16px 6px 16px;">'
             '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">📡 거시 지표</div>',
             unsafe_allow_html=True)
-        for t, n in [("USDKRW=X","원/달러 환율"),("^TNX","미 10년 국채"),("^VIX","변동성 (VIX)")]:
-            show_card(fetch(t, n))
+        for t in ["USDKRW=X","^TNX","^VIX"]:
+            show_card(market_data.get(t, {"label": t, "ok": False}))
         st.markdown('</div>', unsafe_allow_html=True)
 
 with right_col:
@@ -187,7 +196,7 @@ with right_col:
 st.divider()
 
 # ══════════════════════════════════════════════════
-#  섹션 2 — 포트폴리오 총계
+#  섹션 2 — 포트폴리오 총계 (병렬 조회)
 # ══════════════════════════════════════════════════
 st.markdown("### 💼 포트폴리오 총계")
 holdings = get_all_holdings()
@@ -195,11 +204,15 @@ holdings = get_all_holdings()
 if not holdings:
     st.info("Portfolio 페이지에서 종목을 추가해주세요.")
 else:
+    with st.spinner("보유 종목 현재가 조회 중..."):
+        tickers_tuple = tuple(h["ticker"] for h in holdings)
+        prices = get_holdings_prices(tickers_tuple)
+
     rows = []
     for h in holdings:
-        d = get_ticker_data(h["ticker"])
-        if d.get("ok"):
-            rows.append(calculate_portfolio_row(h, d["price"], FX))
+        price = prices.get(h["ticker"])
+        if price:
+            rows.append(calculate_portfolio_row(h, price, FX))
 
     if rows:
         try:
