@@ -314,22 +314,30 @@ cfg = TYPE_MAP[chart_type]
 if chart_type == "5분":
     st.cache_data.clear()
 
-# ── 현재가 정보 헤더 ───────────────────────────────
-price_data = get_ticker_data(ticker_to_show)
+# ── 해외 종목 여부 판단 ───────────────────────────
 display_name = search_name.strip() if search_name.strip() else ticker_to_show
-
-# 해외 종목 여부 판단 (사이드바 모드 + 티커 접미사 복합 판단)
 is_foreign = (market_mode == "해외 종목 조회") or not any(
     ticker_to_show.upper().endswith(s) for s in [".KS", ".KQ", ".KX"]
 )
 
-# 환율 조회
-fx_info = get_ticker_data("USDKRW=X")
-FX_RATE = fx_info["price"] if fx_info.get("ok") else 1330.0
+# ── 현재가 + 환율 + 세부정보 + 차트 데이터 병렬 조회 ──
+from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
 
-# 세부정보 병렬 조회
-with st.spinner("종목 정보 불러오는 중..."):
-    stock_info = get_stock_info(ticker_to_show)
+with st.spinner("데이터 불러오는 중..."):
+    with ThreadPoolExecutor(max_workers=4) as _executor:
+        _fut_price  = _executor.submit(get_ticker_data, ticker_to_show)
+        _fut_fx     = _executor.submit(get_ticker_data, "USDKRW=X")
+        _fut_info   = _executor.submit(get_stock_info,  ticker_to_show)
+        _fut_hist   = _executor.submit(
+            get_history, ticker_to_show, cfg["period"], cfg["interval"]
+        )
+
+        price_data = _fut_price.result()
+        fx_info    = _fut_fx.result()
+        stock_info = _fut_info.result()
+        hist       = _fut_hist.result()
+
+FX_RATE = fx_info["price"] if fx_info.get("ok") else 1330.0
 
 # ── 종목 카드 + 세부정보 카드 나란히 ──────────────
 info_left, info_right = st.columns([2, 3], gap="medium")
@@ -442,9 +450,7 @@ with info_right:
         )
 
 
-# ── 데이터 로드 ────────────────────────────────────
-with st.spinner("차트 데이터 불러오는 중..."):
-    hist = get_history(ticker_to_show, period=cfg["period"], interval=cfg["interval"])
+# ── 데이터 로드 (병렬 조회에서 이미 수신) ────────────
 
 if hist.empty:
     st.warning("데이터를 불러오지 못했습니다. 티커를 확인해주세요.")
