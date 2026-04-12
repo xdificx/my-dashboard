@@ -147,6 +147,15 @@ def get_stock_info(ticker: str) -> dict:
         def pct(v):
             return f"{v*100:.2f}%" if v is not None else None
 
+        def div_pct(v):
+            """배당수익률 전용 — ETF는 이미 % 단위로 반환하는 경우 있음"""
+            if v is None:
+                return None
+            # 1 초과면 이미 % 단위 (예: 0.49 → 49%), 1 이하면 소수 단위
+            if v > 1:
+                return f"{v:.2f}%"
+            return f"{v*100:.2f}%"
+
         def f2(v):
             return f"{v:.2f}" if v is not None else None
 
@@ -176,7 +185,8 @@ def get_stock_info(ticker: str) -> dict:
         earn_growth= info.get("earningsGrowth")
 
         # ── 배당
-        div_yield  = info.get("dividendYield")
+        # trailingAnnualDividendYield가 있으면 우선 사용 (더 정확)
+        div_yield  = info.get("trailingAnnualDividendYield") or info.get("dividendYield")
         div_rate   = info.get("dividendRate")
         payout     = info.get("payoutRatio")
         div5y      = info.get("fiveYearAvgDividendYield")
@@ -227,10 +237,10 @@ def get_stock_info(ticker: str) -> dict:
             "영업현금흐름":   fmt_num(op_cf) if op_cf  else None,
             "FCF Yield":      f"{fcf_yield:.2f}%" if fcf_yield else None,
             # 배당
-            "배당수익률":     pct(div_yield) if div_yield else None,
+            "배당수익률":     div_pct(div_yield) if div_yield else None,
             "배당금(연간)":   fcomma(div_rate) if div_rate else None,
             "배당성향":       pct(payout)    if payout   else None,
-            "5Y 평균배당수익률": f"{div5y:.2f}%" if div5y else None,
+            "5Y 평균배당수익률": div_pct(div5y) if div5y else None,
             # 재무 안정성
             "부채비율":       f"{debt_eq:.1f}%" if debt_eq else None,
             "유동비율":       f2(cur_ratio)  if cur_ratio else None,
