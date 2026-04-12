@@ -8,6 +8,12 @@ from services.krx_service import get_krx_stock_list, search_stocks
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+
+def _html(html_str: str):
+    """st.markdown의 # 마크다운 파싱 충돌 방지."""
+    st.markdown(html_str.replace("#", "&#35;"), unsafe_allow_html=True)
+
+
 st.set_page_config(
     page_title="Chart",
     page_icon="📈",
@@ -15,7 +21,7 @@ st.set_page_config(
 )
 
 with st.sidebar:
-    st.markdown("### 조회 모드")
+    _html("### 조회 모드")
     market_mode = st.radio(
         "조회 모드",
         ["국내 종목 조회", "해외 종목 조회"],
@@ -25,7 +31,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.markdown("### 차트 설정")
+    _html("### 차트 설정")
 
     st.markdown("**차트 유형**")
     chart_type = st.radio(
@@ -57,7 +63,7 @@ st.markdown(f"""
 <div style="font-size:12px;color:#888;margin-bottom:8px;">
   캔들차트 · 이동평균선 · RSI · MACD · 세부 지표
 </div>
-""", unsafe_allow_html=True)
+""")
 
 # ══════════════════════════════════════════════════
 #  지표 계산
@@ -125,12 +131,10 @@ watchlist = get_watchlist()
 #  국내 종목 — KRX 자동완성 검색
 # ══════════════════════════════════════════════════
 if market_mode == "국내 종목 조회":
-    st.markdown(
+    _html(
         '<div style="font-size:12px;color:#888;margin-bottom:4px;">'
         '종목명 또는 종목코드(6자리)로 검색 &nbsp;|&nbsp; '
-        '코스피·코스닥 전체 종목 지원</div>',
-        unsafe_allow_html=True
-    )
+        '코스피·코스닥 전체 종목 지원</div>')
 
     # KRX 종목 목록 로드
     with st.spinner("KRX 종목 목록 불러오는 중..."):
@@ -191,12 +195,9 @@ if market_mode == "국내 종목 조회":
             search_name    = selected_stock["name"]
 
             # 선택된 종목 표시
-            st.markdown(
-                f'<div style="font-size:12px;color:#555;margin-top:2px;">'
+            _html(f'<div style="font-size:12px;color:#555;margin-top:2px;">'
                 f'선택: <b>{search_name}</b> &nbsp; '
-                f'<code>{search_ticker}</code> &nbsp; {selected_stock["market"]}</div>',
-                unsafe_allow_html=True
-            )
+                f'<code>{search_ticker}</code> &nbsp; {selected_stock["market"]}</div>')
         else:
             kc2.warning("검색 결과가 없습니다.")
     elif kr_query and not krx_available:
@@ -219,13 +220,10 @@ if market_mode == "국내 종목 조회":
 #  해외 종목 — 티커 직접 입력
 # ══════════════════════════════════════════════════
 else:
-    st.markdown(
-        '<div style="font-size:12px;color:#888;margin-bottom:4px;">'
+    _html('<div style="font-size:12px;color:#888;margin-bottom:4px;">'
         '티커 입력 예시 &nbsp;|&nbsp; '
         '주식: <b>AAPL</b> &nbsp; <b>TSLA</b> &nbsp; <b>NVDA</b> &nbsp;|&nbsp; '
-        'ETF: <b>QQQ</b> &nbsp; <b>SPY</b> &nbsp; <b>SCHD</b></div>',
-        unsafe_allow_html=True
-    )
+        'ETF: <b>QQQ</b> &nbsp; <b>SPY</b> &nbsp; <b>SCHD</b></div>')
 
     fc1, fc2, fc3 = st.columns([2, 2, 1])
 
@@ -271,8 +269,7 @@ if watchlist:
                     for w in watchlist if w["ticker"] not in held_tickers]
 
 if quick_items:
-    st.markdown("<div style='font-size:12px;color:#888;margin:6px 0 4px;'>빠른 선택</div>",
-                unsafe_allow_html=True)
+    _html("<div style='font-size:12px;color:#888;margin:6px 0 4px;'>빠른 선택</div>")
     btn_cols = st.columns(min(len(quick_items), 8))
     for i, item in enumerate(quick_items[:8]):
         with btn_cols[i % 8]:
@@ -339,116 +336,72 @@ with st.spinner("데이터 불러오는 중..."):
 
 FX_RATE = fx_info["price"] if fx_info.get("ok") else 1330.0
 
-# ── 종목 카드 + 세부정보 카드 나란히 ──────────────
-info_left, info_right = st.columns([2, 3], gap="medium")
+# ── 종목 카드 ────────────────────────────────────
+if price_data.get("ok"):
+    up    = price_data["chg"] >= 0
+    # rgb()로 색상 지정 — # 기호가 마크다운 헤더로 파싱되는 문제 방지
+    color    = "rgb(226,75,74)"  if up else "rgb(55,138,221)"
+    bg_color = "rgb(249,249,249)"
+    bd_color = "rgb(224,224,224)"
+    arrow    = "▲" if up else "▼"
+    diff     = price_data["price"] * abs(price_data["chg"]) / 100
 
-with info_left:
-    if price_data.get("ok"):
-        up    = price_data["chg"] >= 0
-        # rgb()로 색상 지정 — # 기호가 마크다운 헤더로 파싱되는 문제 방지
-        color    = "rgb(226,75,74)"  if up else "rgb(55,138,221)"
-        bg_color = "rgb(249,249,249)"
-        bd_color = "rgb(224,224,224)"
-        arrow    = "▲" if up else "▼"
-        diff     = price_data["price"] * abs(price_data["chg"]) / 100
-
-        krw_html = ""
-        if is_foreign:
-            krw_html = (
-                "<div style='font-size:12px;color:rgb(136,136,136);margin-top:6px;'>"
-                + "≈ " + f"{price_data['price'] * FX_RATE:,.0f}" + "원 "
-                + "<span style='color:" + color + ";'>"
-                + arrow + " " + f"{diff * FX_RATE:,.0f}" + "원</span>"
-                + "<span style='font-size:11px;'> (1 USD = "
-                + f"{FX_RATE:,.2f}" + " KRW)</span></div>"
-            )
-
-        exch = (" &nbsp;·&nbsp; " + stock_info["거래소"]) if stock_info.get("거래소") else ""
-        curr = (" &nbsp;·&nbsp; " + stock_info["통화"])   if stock_info.get("통화")   else ""
-        sect = (
-            "<div style='font-size:11px;color:rgb(170,170,170);margin-top:2px;'>"
-            + stock_info["섹터"] + "</div>"
-        ) if stock_info.get("섹터") else ""
-
-        card_html = (
-            "<div style='background:" + bg_color + ";border:1.5px solid " + bd_color + ";"
-            "border-radius:12px;padding:16px 20px;margin-bottom:12px;'>"
-            + "<div style='display:flex;align-items:center;gap:20px;'>"
-            + "<div>"
-            + "<div style='font-size:18px;font-weight:800;color:rgb(17,17,17);'>"
-            + display_name + "</div>"
-            + "<div style='font-size:12px;color:rgb(136,136,136);margin-top:2px;'>"
-            + ticker_to_show + exch + curr + "</div>"
-            + sect
-            + "</div>"
-            + "<div style='width:1px;height:40px;background:rgb(221,221,221);flex-shrink:0;'></div>"
-            + "<div>"
-            + "<div style='font-size:26px;font-weight:700;color:rgb(17,17,17);'>"
-            + f"{price_data['price']:,.2f}" + "</div>"
-            + "<div style='font-size:13px;font-weight:600;color:" + color + ";margin-top:2px;'>"
-            + arrow + " " + f"{diff:,.2f}"
-            + " &nbsp; " + arrow + " " + f"{abs(price_data['chg']):.2f}" + "%"
-            + "</div>"
-            + "</div>"
-            + "</div>"
-            + krw_html
-            + "</div>"
-        )
-        st.markdown(card_html, unsafe_allow_html=True)
-
-    else:
-        card_html = (
-            "<div style='background:rgb(249,249,249);border:1.5px solid rgb(224,224,224);"
-            "border-radius:12px;padding:16px 20px;margin-bottom:12px;'>"
-            + "<div style='font-size:18px;font-weight:800;color:rgb(17,17,17);'>"
-            + display_name + "</div>"
-            + "<div style='font-size:12px;color:rgb(136,136,136);'>"
-            + ticker_to_show + "</div>"
-            + "<div style='font-size:13px;color:rgb(170,170,170);margin-top:8px;'>현재가 조회 실패</div>"
-            + "</div>"
-        )
-        st.markdown(card_html, unsafe_allow_html=True)
-with info_right:
-    if stock_info:
-        groups = [
-            ("기업 규모",    ["시가총액", "발행주식수", "유동주식수", "평균거래량"]),
-            ("밸류에이션",   ["PER", "PBR", "EPS", "배당수익률", "베타(1Y)"]),
-            ("52주 범위",    ["52주 최고", "52주 최저"]),
-        ]
-        items_html = ""
-        for group_title, keys in groups:
-            row_items = [(k, stock_info[k]) for k in keys if stock_info.get(k)]
-            if not row_items:
-                continue
-            items_html += (
-                f'<div style="font-size:11px;color:#aaa;font-weight:600;'
-                f'margin:8px 0 4px 0;letter-spacing:0.5px;">{group_title}</div>'
-                f'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-            )
-            for k, v in row_items:
-                items_html += (
-                    f'<div style="background:#fff;border:1px solid #e8e8e8;'
-                    f'border-radius:8px;padding:5px 10px;font-size:12px;">'
-                    f'<span style="color:#888;">{k}</span>'
-                    f'<span style="font-weight:700;color:#111;margin-left:6px;">{v}</span>'
-                    f'</div>'
-                )
-            items_html += "</div>"
-        st.markdown(
-            f'<div style="background:#f9f9f9;border:1.5px solid #e0e0e0;'
-            f'border-radius:12px;padding:14px 16px;margin-bottom:12px;">'
-            f'{items_html}'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            '<div style="background:#f9f9f9;border:1.5px solid #e0e0e0;'
-            'border-radius:12px;padding:14px 16px;margin-bottom:12px;'
-            'font-size:13px;color:#aaa;">세부정보 조회 실패</div>',
-            unsafe_allow_html=True
+    krw_html = ""
+    if is_foreign:
+        krw_html = (
+            "<div style='font-size:12px;color:rgb(136,136,136);margin-top:6px;'>"
+            + "≈ " + f"{price_data['price'] * FX_RATE:,.0f}" + "원 "
+            + "<span style='color:" + color + ";'>"
+            + arrow + " " + f"{diff * FX_RATE:,.0f}" + "원</span>"
+            + "<span style='font-size:11px;'> (1 USD = "
+            + f"{FX_RATE:,.2f}" + " KRW)</span></div>"
         )
 
+    exch = (" &nbsp;·&nbsp; " + stock_info["거래소"]) if stock_info.get("거래소") else ""
+    curr = (" &nbsp;·&nbsp; " + stock_info["통화"])   if stock_info.get("통화")   else ""
+    sect = (
+        "<div style='font-size:11px;color:rgb(170,170,170);margin-top:2px;'>"
+        + stock_info["섹터"] + "</div>"
+    ) if stock_info.get("섹터") else ""
+
+    card_html = (
+        "<div style='background:" + bg_color + ";border:1.5px solid " + bd_color + ";"
+        "border-radius:12px;padding:16px 20px;margin-bottom:12px;'>"
+        + "<div style='display:flex;align-items:center;gap:20px;'>"
+        + "<div>"
+        + "<div style='font-size:18px;font-weight:800;color:rgb(17,17,17);'>"
+        + display_name + "</div>"
+        + "<div style='font-size:12px;color:rgb(136,136,136);margin-top:2px;'>"
+        + ticker_to_show + exch + curr + "</div>"
+        + sect
+        + "</div>"
+        + "<div style='width:1px;height:40px;background:rgb(221,221,221);flex-shrink:0;'></div>"
+        + "<div>"
+        + "<div style='font-size:26px;font-weight:700;color:rgb(17,17,17);'>"
+        + f"{price_data['price']:,.2f}" + "</div>"
+        + "<div style='font-size:13px;font-weight:600;color:" + color + ";margin-top:2px;'>"
+        + arrow + " " + f"{diff:,.2f}"
+        + " &nbsp; " + arrow + " " + f"{abs(price_data['chg']):.2f}" + "%"
+        + "</div>"
+        + "</div>"
+        + "</div>"
+        + krw_html
+        + "</div>"
+    )
+    st.markdown(card_html)
+
+else:
+    card_html = (
+        "<div style='background:rgb(249,249,249);border:1.5px solid rgb(224,224,224);"
+        "border-radius:12px;padding:16px 20px;margin-bottom:12px;'>"
+        + "<div style='font-size:18px;font-weight:800;color:rgb(17,17,17);'>"
+        + display_name + "</div>"
+        + "<div style='font-size:12px;color:rgb(136,136,136);'>"
+        + ticker_to_show + "</div>"
+        + "<div style='font-size:13px;color:rgb(170,170,170);margin-top:8px;'>현재가 조회 실패</div>"
+        + "</div>"
+    )
+    _html(card_html)
 
 # ── 데이터 로드 (병렬 조회에서 이미 수신) ────────────
 
@@ -683,7 +636,7 @@ with panel_col:
         rcolor = "#e24b4a" if rv >= 70 else ("#378add" if rv <= 30 else "#555")
         rbg    = "rgba(226,75,74,0.06)" if rv >= 70 else ("rgba(55,138,221,0.06)" if rv <= 30 else "#f9f9f9")
         rbar   = min(int(rv), 100)
-        st.markdown(f"""
+        _html(f"""
 <div style="background:{rbg};border:1px solid #e0e0e0;border-radius:10px;
             padding:8px 12px 10px 12px;margin-top:4px;">
   <div style="font-size:11px;color:#888;font-weight:600;margin-bottom:4px;">RSI (14)</div>
@@ -693,12 +646,12 @@ with panel_col:
     <div style="background:{rcolor};width:{rbar}%;height:4px;border-radius:4px;"></div>
   </div>
 </div>
-""", unsafe_allow_html=True)
+""")
 
 # ══════════════════════════════════════════════════
 #  기간 설정 섹션 (차트 아래 별도 배치 — 버튼 클릭 시 차트 재렌더링 없음)
 # ══════════════════════════════════════════════════
-st.markdown("---")
+_html("---")
 st.markdown("#### 기간 직접 설정")
 st.caption("기간을 지정하면 위 카드의 값이 해당 기간 기준으로 업데이트됩니다.")
 
@@ -767,7 +720,11 @@ st.markdown("---")
 st.markdown("#### 세부 지표")
 
 if not stock_info:
-    st.info("세부 지표를 불러오지 못했습니다. 티커를 확인해주세요.")
+    st.warning(
+        f"**{display_name}** 세부 지표를 불러오지 못했습니다.  \n"
+        "yfinance가 해당 종목의 `.info` 데이터를 제공하지 않거나 "
+        "일시적인 API 오류입니다. 잠시 후 다시 시도해주세요."
+    )
 else:
     INDICATOR_META = {
         "PER":            ("주가수익비율",       "주가 ÷ EPS. 낮을수록 이익 대비 저렴. 업종 평균과 비교 필수."),
@@ -816,28 +773,26 @@ else:
             meta_name, meta_desc = INDICATOR_META.get(key, (key, ""))
             safe_desc = meta_desc.replace('"', '&quot;').replace("'", '&#39;')
             with col:
-                st.markdown(f"""
-<div style="background:#f9f9f9;border:1px solid #e0e0e0;
-            border-radius:10px;padding:10px 12px;margin-bottom:8px;
-            position:relative;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-    <div style="font-size:11px;color:#888;font-weight:600;">{key}</div>
-    <div style="position:relative;display:inline-block;">
-      <span style="font-size:13px;color:#bbb;cursor:help;line-height:1;"
-            onmouseenter="this.nextElementSibling.style.display='block'"
-            onmouseleave="this.nextElementSibling.style.display='none'">&#9432;</span>
-      <div style="display:none;position:absolute;right:0;top:20px;
-                  background:#333;color:#fff;font-size:11px;
-                  padding:6px 10px;border-radius:6px;
-                  width:200px;line-height:1.5;z-index:9999;
-                  white-space:normal;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
-        {safe_desc}
-      </div>
-    </div>
-  </div>
-  <div style="font-size:18px;font-weight:700;color:#111;margin-top:3px;">{val}</div>
-</div>
-""", unsafe_allow_html=True)
+                card = (
+                    "<div style='background:rgb(249,249,249);border:1px solid rgb(224,224,224);"
+                    "border-radius:10px;padding:10px 12px;margin-bottom:8px;position:relative;'>"
+                    "<div style='display:flex;justify-content:space-between;align-items:flex-start;'>"
+                    "<div style='font-size:11px;color:rgb(136,136,136);font-weight:600;'>" + key + "</div>"
+                    "<div style='position:relative;display:inline-block;'>"
+                    "<span style='font-size:13px;color:rgb(187,187,187);cursor:help;line-height:1;'"
+                    " onmouseenter=\"this.nextElementSibling.style.display='block'\""
+                    " onmouseleave=\"this.nextElementSibling.style.display='none'\">&#9432;</span>"
+                    "<div style='display:none;position:absolute;right:0;top:20px;"
+                    "background:rgb(51,51,51);color:rgb(255,255,255);font-size:11px;"
+                    "padding:6px 10px;border-radius:6px;width:200px;line-height:1.5;"
+                    "z-index:9999;white-space:normal;box-shadow:0 2px 8px rgba(0,0,0,0.2);'>"
+                    + safe_desc +
+                    "</div></div></div>"
+                    "<div style='font-size:18px;font-weight:700;color:rgb(17,17,17);margin-top:3px;'>"
+                    + str(val) +
+                    "</div></div>"
+                )
+                st.markdown(card, unsafe_allow_html=True)
         st.markdown("")
 # ══════════════════════════════════════════════════
 #  해외 종목 전용 — 재무제표 + 애널리스트 목표주가
@@ -929,9 +884,7 @@ if is_foreign and ticker_to_show:
             st.markdown(
                 f'<div style="margin-top:4px;font-size:13px;">'
                 f'컨센서스: <b style="color:{rec_color};">{rec if rec else "—"}</b>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+                f'</div>')
 
         st.divider()
 
@@ -986,14 +939,11 @@ if is_foreign and ticker_to_show:
                 st.info("표시할 데이터가 없습니다.")
                 return
 
-            st.markdown(
-                f'<div style="overflow-x:auto;">'
+            _html(f'<div style="overflow-x:auto;">'
                 f'<table style="width:100%;border-collapse:collapse;font-family:Arial;">'
                 f'<thead>{header}</thead>'
                 f'<tbody>{rows_html}</tbody>'
-                f'</table></div>',
-                unsafe_allow_html=True
-            )
+                f'</table></div>')
 
         INCOME_MAP = {
             "Total Revenue":          "매출액",
